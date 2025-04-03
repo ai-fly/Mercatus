@@ -5,7 +5,7 @@ from app.agents.planner import planner_agent
 from app.agents.executor import executor_agent 
 from app.agents.evaluator import evaluator_agent
 from app.types.context import ExecutorContext
-from app.types.output import TaskItem, UserQueryPlan
+from app.types.output import TaskItem, UserQueryPlan, EvaluatorResult
 
 
 class Manager:
@@ -57,21 +57,21 @@ class Manager:
             
             # 评估执行结果
             evaluator_result = await Runner.run(evaluator_agent, context=context)
-            eval_output = evaluator_result.final_output
+            eval_output: EvaluatorResult = evaluator_result.final_output_as(EvaluatorResult)
             
             # 根据评估结果决定下一步操作
-            if "完成" in eval_output:
+            if eval_output.status == "完成":
                 # 任务完成，保存结果并继续下一任务
                 results.append(f"任务 {task_index + 1} 已完成: {context.current_task.task}")
                 task_index += 1
-            elif "重试" in eval_output:
+            elif eval_output.action == "重试当前任务":
                 # 需要重试当前任务，不增加索引
                 context.execution_history.append(f"评估结果: 需要重试任务 {task_index + 1}")
-            elif "调整" in eval_output:
+            elif eval_output.action == "调整任务计划":
                 # 需要重新规划，重新调用planner
                 context.execution_history.append(f"评估结果: 需要调整计划")
                 new_plan_result = await Runner.run(planner_agent, f"{query}\n基于执行历史进行计划调整: {context.execution_history}")
-                new_plan = new_plan_result.output
+                new_plan: UserQueryPlan = new_plan_result.final_output_as(UserQueryPlan)
                 
                 # 更新任务列表
                 tasks = new_plan.tasks
@@ -84,10 +84,10 @@ class Manager:
                     
                 # 重置任务索引
                 task_index = 0
-            elif "终止" in eval_output:
+            elif eval_output.action == "终止执行":
                 # 终止执行
                 context.finished = True
-                results.append(f"执行终止: {eval_output}")
+                results.append(f"执行终止: {eval_output.summary}")
                 break
             
             # 检查是否所有任务都已完成
