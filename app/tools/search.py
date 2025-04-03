@@ -1,6 +1,6 @@
 from typing import Any
 from agents import RunContextWrapper, function_tool
-from tavily import Client
+from tavily import TavilyClient
 from app.config import TAVILY_API_KEY
 
 
@@ -14,7 +14,7 @@ def search_tool(ctx: RunContextWrapper[Any], query: str) -> str:
         query: The query to search for.
     """
 
-    client = Client(api_key=TAVILY_API_KEY)
+    client = TavilyClient(api_key=TAVILY_API_KEY)
     # invoke tavily search api
     results = client.search(query)
     return str(results)
