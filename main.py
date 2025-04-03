@@ -8,6 +8,7 @@ from agents import set_default_openai_client
 from pydantic import SecretStr
 from app.config import BASIC_LLM_API_KEY, BASIC_LLM_URL
 from app.mcps.file import file_mcp_server
+from app.tools.file import file_tool
 from agents.mcp import MCPServer, MCPServerStdio
 from app.agents.planner import planner_agent
 from app.agents.executor import executor_agent
@@ -15,14 +16,14 @@ from app.agents.evaluator import evaluator_agent
 
 from app.tools.browser import browser_use_tool
 from app.types.output import UserQueryPlan
-
-custom_client = AsyncOpenAI(base_url=BASIC_LLM_URL api_key=BASIC_LLM_URL)
+# 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
+custom_client = AsyncOpenAI(base_url=BASIC_LLM_URL, api_key=BASIC_LLM_API_KEY)
 set_default_openai_client(client=custom_client, use_for_tracing=False)
 set_default_openai_api("chat_completions")
 set_tracing_disabled(disabled=True)
 
 
-agent = Agent(name="Assistant", model="deepseek-chat", instructions="你是一个可以和浏览器交互的助手，请根据用户的问题，使用浏览器交互。", tools=[browser_use_tool])
+agent = Agent(name="Assistant", model="deepseek-chat", instructions="Use the tools to read the filesystem and answer questions based on those files.", tools=[file_tool])
 
 
 async def main():
@@ -48,11 +49,14 @@ async def main():
 #     )
 #     result = await agent.run()
 #     print('#####')
-#     print(result.final_result())
+#     print(result.final_result)
 
-
-    result = await Runner.run(starting_agent=planner_agent, input="用户目标:获取最新的大模型ai agent博客,挑选3篇,然后总结,然后写一篇摘要;请你制定一个简易的计划")
-    print(result.final_output_as(UserQueryPlan))
+    try:
+        await file_mcp_server.connect()  
+        result = await Runner.run(starting_agent=agent, input="生成两个个文件,第一个文件为a.txt,第二个文件为b.txt,第一个文件的内容是hello world,第二个文件的内容是hello world2")
+        print(result.final_output)
+    finally:
+        await file_mcp_server.cleanup()
 
     # try:
     #     await file_mcp_server.connect()  
