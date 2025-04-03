@@ -1,7 +1,9 @@
 from agents import Agent, RunContextWrapper
-from agents.model_settings import ModelSettings
 
 from app.types.context import ExecutorContext
+from app.types.output import EvaluatorResult
+from app.config import BASE_MODEL_NAME
+
 
 def dynamic_instructions(
     context: RunContextWrapper[ExecutorContext], agent: Agent[ExecutorContext]
@@ -56,16 +58,19 @@ def dynamic_instructions(
 </输出要求>
 
 <决策框架>
-根据你的评估，做出以下决策：
-1. 当前任务状态：[完成/部分完成/未完成/失败]
-2. 建议行动：[继续执行计划/重试当前任务/调整任务计划/终止执行]
-3. 整体任务完成状态：[进行中/已完成/需要调整]
+请输出一个结构化的评估结果,包含以下字段:
+1. status: 当前任务状态 [完成/部分完成/未完成/失败]
+2. action: 建议行动 [继续执行计划/重试当前任务/调整任务计划/终止执行]
+3. overall_status: 整体任务完成状态 [进行中/已完成/需要调整]
+4. summary: 详细评估说明或总结
 
 如任务全部完成，请提供简洁而全面的总结，包括达成的目标、产出的价值以及可能的后续行动建议。
 """
 
+
 evaluator_agent = Agent(
     name="EvaluatorAgent",
     instructions=dynamic_instructions,
+    model=BASE_MODEL_NAME,
+    output_type=EvaluatorResult,
 )
-
