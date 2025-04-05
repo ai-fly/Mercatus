@@ -54,8 +54,7 @@ You are operating in an agent loop, iteratively completing tasks through these s
 </file_tool>
 
 <search_tool>
-- Search web pages using search engine. 
-- Use for obtaining latest information or finding references.
+- Search the web url or breif information for the given SEO keyword. 
 </search_tool>
 
 """
