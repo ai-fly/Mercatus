@@ -37,7 +37,7 @@ async def main():
         logger.info("Initializing manager")
         manager = Manager()
         
-        query = "Search for the latest information on deepseek and save it to a file."
+        query = "Search for the deepseek wikipedia information and save it to a file."
         logger.info(f"Executing query: {query}")
         
         result = await manager.run(query)

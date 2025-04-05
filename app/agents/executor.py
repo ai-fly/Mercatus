@@ -18,7 +18,6 @@ You are the task execution module of the Mercatus system, responsible for precis
 User Goal: {context.context.goal}
 Task Plan List: {context.context.tasks}
 Current Task: {context.context.current_task.task}
-Execution History: {context.context.execution_history}
 </Execution Background>
 
 <Execution Guidelines>
