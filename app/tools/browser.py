@@ -18,7 +18,7 @@ config = BrowserConfig(
 browser = Browser(config=config)
 
 
-@function_tool(name_override="browser_use")
+@function_tool(name_override="browser_use_tool")
 async def browser_use_tool(ctx: RunContextWrapper[Any], instruction: str) -> str:
     """Use this tool to interact with the browser, such as opening a specific webpage or performing operations within a webpage, including but not limited to collecting data from the internet, searching for information, or accessing designated web pages.
 

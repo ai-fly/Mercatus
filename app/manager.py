@@ -22,7 +22,7 @@ class Manager:
             str: Task completion result
         """
         # 1. Generate plan using planner agent
-        plan_result = await Runner.run(planner_agent, query)
+        plan_result = await Runner.run(planner_agent, input=query)
         plan: UserQueryPlan = plan_result.final_output_as(UserQueryPlan)
         
         # Extract tasks from plan
@@ -48,14 +48,14 @@ class Manager:
             context.current_task = tasks[task_index]
             
             # Execute current task
-            executor_result = await Runner.run(executor_agent, context=context)
+            executor_result = await Runner.run(executor_agent, input=context.current_task.task, context=context)
             
             # Record execution history
             execution_result = f"Task {task_index + 1}: {context.current_task.task}\nExecution Result: {executor_result.final_output}"
             context.execution_history.append(execution_result)
             
             # Evaluate execution result
-            evaluator_result = await Runner.run(evaluator_agent, context=context)
+            evaluator_result = await Runner.run(evaluator_agent, input=f"last_task: {context.current_task}, execution_result: {execution_result}, please evaluate the result.", context=context)
             eval_output: EvaluatorResult = evaluator_result.final_output_as(EvaluatorResult)
             
             # Determine next action based on evaluation result
