@@ -1,22 +1,9 @@
-import os
-import logging
-from agents import Agent, Runner, set_default_openai_api, set_tracing_disabled
-from browser_use import Agent as BrowserAgent, Browser, BrowserConfig
-from browser_use.browser.context import BrowserContextConfig, BrowserContext
-from langchain_openai import ChatOpenAI
+from agents import set_default_openai_api, set_tracing_disabled
 from openai import AsyncOpenAI
 from agents import set_default_openai_client
-from pydantic import SecretStr
 from app.config import BASIC_LLM_API_KEY, BASIC_LLM_URL
 from app.mcps.file import file_mcp_server
-from app.tools.file import file_tool
-from agents.mcp import MCPServer, MCPServerStdio
-from app.agents.planner import planner_agent
-from app.agents.executor import executor_agent
-from app.agents.evaluator import evaluator_agent
 from app.manager import Manager
-from app.tools.browser import browser_use_tool
-from app.types.output import UserQueryPlan
 from app.utils.logging import setup_logger
 
 # Set up main logger
