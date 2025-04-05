@@ -21,7 +21,7 @@ class EvaluatorResult(BaseModel):
     overall_status: str
     """Overall task completion status: in_progress/completed/needs_adjustment"""
     
-    summary: str = ""
+    summary: str
     """Detailed explanation or summary of evaluation results"""
 
 
