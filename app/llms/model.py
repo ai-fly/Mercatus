@@ -1,7 +1,7 @@
 
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
-from app.config import BASIC_LLM_URL, BASIC_LLM_API_KEY
+from app.config import BASE_MODEL_NAME, BASIC_LLM_URL, BASIC_LLM_API_KEY
 
 
 
@@ -12,6 +12,6 @@ def get_llm():
     Returns:
         ChatOpenAI: the llm model instance
     """
-    return ChatOpenAI(base_url=BASIC_LLM_URL, model='deepseek-chat', api_key=SecretStr(BASIC_LLM_API_KEY))
+    return ChatOpenAI(base_url=BASIC_LLM_URL, model=BASE_MODEL_NAME, api_key=SecretStr(BASIC_LLM_API_KEY))
 
 
