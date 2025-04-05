@@ -1,5 +1,3 @@
-
-
 from dataclasses import dataclass
 
 from app.types.output import TaskItem
@@ -8,17 +6,17 @@ from app.types.output import TaskItem
 @dataclass
 class ExecutorContext():
     goal: str
-    """用户的目标"""
+    """User's goal"""
     
     tasks: list[TaskItem]
-    """所有任务"""
+    """All tasks"""
 
     finished: bool
-    """是否完成任务"""
+    """Whether the task is completed"""
 
     current_task: TaskItem
-    """当前要执行的任务"""
+    """The task currently being executed"""
 
     execution_history: list[str]
-    """执行历史"""
+    """Execution history"""
     

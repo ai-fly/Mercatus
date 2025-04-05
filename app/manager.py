@@ -9,29 +9,28 @@ from app.types.output import TaskItem, UserQueryPlan, EvaluatorResult
 
 
 class Manager:
-    """管理AI代理工作流的类，协调计划-执行-评估循环"""
+    """Class that manages AI agent workflow, coordinating the plan-execute-evaluate cycle"""
 
     async def run(self, query: str) -> str:
         """
-        执行完整的AI代理工作流
+        Execute the complete AI agent workflow
         
         Args:
-            query: 用户输入的问题
+            query: User input question
             
         Returns:
-            str: 任务完成的结果
+            str: Task completion result
         """
-        # 1. 使用planner agent生成计划
+        # 1. Generate plan using planner agent
         plan_result = await Runner.run(planner_agent, query)
         plan: UserQueryPlan = plan_result.final_output_as(UserQueryPlan)
         
-        
-        # 提取计划中的任务
+        # Extract tasks from plan
         tasks = plan.tasks
         if not tasks:
-            return "无法为您的问题生成有效的执行计划。"
+            return "Unable to generate a valid execution plan for your question."
         
-        # 2. 创建执行上下文
+        # 2. Create execution context
         context = ExecutorContext(
             goal=query,
             tasks=tasks,
@@ -43,60 +42,64 @@ class Manager:
         results = []
         task_index = 0
         
-        # 3. 执行计划-执行-评估循环，直到所有任务完成
+        # 3. Execute plan-execute-evaluate loop until all tasks are completed
         while not context.finished and task_index < len(tasks):
-            # 更新当前任务
+            # Update current task
             context.current_task = tasks[task_index]
             
-            # 执行当前任务
+            # Execute current task
             executor_result = await Runner.run(executor_agent, context=context)
             
-            # 记录执行历史
-            execution_result = f"任务 {task_index + 1}: {context.current_task.task}\n执行结果: {executor_result.final_output}"
+            # Record execution history
+            execution_result = f"Task {task_index + 1}: {context.current_task.task}\nExecution Result: {executor_result.final_output}"
             context.execution_history.append(execution_result)
             
-            # 评估执行结果
+            # Evaluate execution result
             evaluator_result = await Runner.run(evaluator_agent, context=context)
             eval_output: EvaluatorResult = evaluator_result.final_output_as(EvaluatorResult)
             
-            # 根据评估结果决定下一步操作
-            if eval_output.status == "完成":
-                # 任务完成，保存结果并继续下一任务
-                results.append(f"任务 {task_index + 1} 已完成: {context.current_task.task}")
+            # Determine next action based on evaluation result
+            if eval_output.status == "completed":
+                # Task completed, save result and continue to next task
+                results.append(f"Task {task_index + 1} completed: {context.current_task.task}")
                 task_index += 1
-            elif eval_output.action == "重试当前任务":
-                # 需要重试当前任务，不增加索引
-                context.execution_history.append(f"评估结果: 需要重试任务 {task_index + 1}")
-            elif eval_output.action == "调整任务计划":
-                # 需要重新规划，重新调用planner
-                context.execution_history.append(f"评估结果: 需要调整计划")
-                new_plan_result = await Runner.run(planner_agent, f"{query}\n基于执行历史进行计划调整: {context.execution_history}")
+            elif eval_output.action == "continue_execution_plan":
+                # Continue with the next task
+                results.append(f"Task {task_index + 1} completed: {context.current_task.task}")
+                task_index += 1
+            elif eval_output.action == "retry_current_task":
+                # Need to retry current task, don't increment index
+                context.execution_history.append(f"Evaluation Result: Need to retry task {task_index + 1}")
+            elif eval_output.action == "adjust_task_plan":
+                # Need to replan, call planner again
+                context.execution_history.append(f"Evaluation Result: Need to adjust plan")
+                new_plan_result = await Runner.run(planner_agent, f"{query}\nAdjust plan based on execution history: {context.execution_history}")
                 new_plan: UserQueryPlan = new_plan_result.final_output_as(UserQueryPlan)
                 
-                # 更新任务列表
+                # Update task list
                 tasks = new_plan.tasks
                 context.tasks = tasks
                 
-                # 如果没有任务，结束循环
+                # If no tasks, end loop
                 if not tasks:
                     context.finished = True
                     break
                     
-                # 重置任务索引
+                # Reset task index
                 task_index = 0
-            elif eval_output.action == "终止执行":
-                # 终止执行
+            elif eval_output.action == "terminate_execution":
+                # Terminate execution
                 context.finished = True
-                results.append(f"执行终止: {eval_output.summary}")
+                results.append(f"Execution terminated: {eval_output.summary}")
                 break
             
-            # 检查是否所有任务都已完成
+            # Check if all tasks are completed
             if task_index >= len(tasks):
                 context.finished = True
         
-        # 4. 返回执行结果
+        # 4. Return execution results
         if context.finished:
-            return "\n".join(results) + "\n\n最终结果：" + context.execution_history[-1].split("执行结果: ")[-1]
+            return "\n".join(results) + "\n\nFinal Result: " + context.execution_history[-1].split("Execution Result: ")[-1]
         else:
-            return "任务未能完全执行完成。当前进度：\n" + "\n".join(results)
+            return "Tasks could not be fully completed. Current progress:\n" + "\n".join(results)
         
