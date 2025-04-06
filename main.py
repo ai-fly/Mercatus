@@ -5,6 +5,7 @@ from app.config import BASIC_LLM_API_KEY, BASIC_LLM_URL
 from app.mcps.file import file_mcp_server
 from app.manager import Manager
 from app.utils.logging import setup_logger
+import sys
 
 # Set up main logger
 logger = setup_logger(name="main")
@@ -24,7 +25,7 @@ async def main():
         logger.info("Initializing manager")
         manager = Manager()
         
-        query = "Search for the deepseek wikipedia information and save it to a file."
+        query = input("Please enter your goal: ")
         logger.info(f"Executing query: {query}")
         
         result = await manager.run(query)
