@@ -25,7 +25,6 @@ Current Task: {context.context.current_task.task}
    - Choose the most appropriate tools based on task requirements
    - Search Tool: For obtaining the latest information or finding reference materials
    - Browser Tool: For web page interaction and data extraction
-   - File Tool: For reading, writing, appending, and editing files
 
 3. Execution Strategy
    - Adopt a systematic approach, executing task steps in logical order
