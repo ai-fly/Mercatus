@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Annotated, List
+from typing import Annotated, List, Union
 from typing_extensions import TypedDict
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
@@ -50,3 +50,8 @@ class AgentState(TypedDict):
 
     # 错误信息
     error_message: str | None
+
+    # 添加必需字段
+    remaining_steps: int
+
+    structured_response: Union[UserQueryPlan, EvaluatorResult, None]
