@@ -50,5 +50,11 @@ You are operating in an agent loop, iteratively completing tasks through these s
 - Search the web url or breif information for the given SEO keyword. 
 </search_tool>
 
+<planning_output>
+Your role is to analyze the user query and break it down into a structured plan.
+You must output a list of specific, actionable tasks in the UserQueryPlan format.
+Each task should be clear and executable by the system.
+</planning_output>
+
 """
 ) 

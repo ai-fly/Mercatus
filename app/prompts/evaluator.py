@@ -1,8 +1,8 @@
-from agents import RunContextWrapper, Agent
 from app.types.context import ExecutorContext
+from langchain_core.runnables import RunnableConfig
 
 def dynamic_instructions(
-    context: RunContextWrapper[ExecutorContext], agent: Agent[ExecutorContext]
+    state: ExecutorContext, config: RunnableConfig
 ) -> str:
     return f"""
 <Evaluator Role Definition>
@@ -10,11 +10,11 @@ You are the task evaluation module of the Mercatus system, responsible for syste
 </Evaluator Role Definition>
 
 <Evaluation Background>
-User Goal: {context.context.goal}
-Task Plan List: {context.context.tasks}
-Current Task Being Executed: {context.context.current_task.task}
+User Goal: {config["context"]["goal"]}
+Task Plan List: {config["context"]["tasks"]}
+Current Task Being Executed: {config["context"]["current_task"]["task"]}
 Task Execution History:
-{context.context.execution_history}
+{config["context"]["execution_history"]}
 </Evaluation Background>
 
 <Evaluation Framework>

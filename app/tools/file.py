@@ -1,7 +1,7 @@
 from typing import Any
 from agents import Agent
 from app.config import BASE_MODEL_NAME
-from app.mcps.file import file_mcp_server
+from app.mcps.mcp_entrypoint import file_mcp_server
 
 agent_mcp = Agent(
     name="FileMcpAgentTool",

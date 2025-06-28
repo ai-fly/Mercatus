@@ -1,8 +1,8 @@
-from agents import RunContextWrapper, Agent
 from app.types.context import ExecutorContext
+from langchain_core.runnables import RunnableConfig
 
 def dynamic_instructions(
-    context: RunContextWrapper[ExecutorContext], agent: Agent[ExecutorContext]
+    state: ExecutorContext, config: RunnableConfig
 ) -> str:
     return f"""
 <Executor Role Definition>
@@ -10,9 +10,9 @@ You are the task execution module of the Mercatus system, responsible for precis
 </Executor Role Definition>
 
 <Execution Background>
-User Goal: {context.context.goal}
-Task Plan List: {context.context.tasks}
-Current Task: {context.context.current_task.task}
+User Goal: {config["context"]["goal"]}
+Task Plan List: {config["context"]["tasks"]}
+Current Task: {config["context"]["current_task"]["task"]}
 </Execution Background>
 
 <Execution Guidelines>
@@ -45,4 +45,4 @@ Current Task: {context.context.current_task.task}
 </Output Requirements>
 
 Please follow these guidelines and use the provided tools to complete the current task: {context.context.current_task.task}
-""" 
+"""

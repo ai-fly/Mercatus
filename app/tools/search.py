@@ -1,11 +1,11 @@
 from typing import Any
-from agents import RunContextWrapper, function_tool
+from langchain_core.tools import tool
 from tavily import TavilyClient
 from app.config import TAVILY_API_KEY
 
 
-@function_tool(name_override="search_tool")
-def search_tool(ctx: RunContextWrapper[Any], keyword: str) -> str:
+@tool
+def search_tool(keyword: str) -> str:
     """Use this tool to search the web url or breif information for the given SEO keyword.
 
     Args:
