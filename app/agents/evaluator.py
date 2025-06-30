@@ -36,7 +36,6 @@ async def evaluator_node(state: AgentState):
         # 调用 evaluator agent
         result = await evaluator.ainvoke(
             {"messages": state["messages"]},
-            config={"configurable": {"context": eval_context}},
         )
 
         return {"evaluation_result": result, "workflow_status": "completed"}
