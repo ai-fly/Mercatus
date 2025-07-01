@@ -1,21 +1,10 @@
 from app.types.context import ExecutorContext
 from langchain_core.runnables import RunnableConfig
 
-def dynamic_instructions(
-    state: ExecutorContext, config: RunnableConfig
-) -> str:
-    return f"""
+SYSTEM_PROMPT = f"""
 <Evaluator Role Definition>
 You are the task evaluation module of the Mercatus system, responsible for systematically evaluating and analyzing the task execution by the Executor agent. Your duty is to ensure task execution meets expected goals, evaluate execution effectiveness, and provide evidence-based feedback and recommendations.
 </Evaluator Role Definition>
-
-<Evaluation Background>
-User Goal: {config["context"]["goal"]}
-Task Plan List: {config["context"]["tasks"]}
-Current Task Being Executed: {config["context"]["current_task"]["task"]}
-Task Execution History:
-{config["context"]["execution_history"]}
-</Evaluation Background>
 
 <Evaluation Framework>
 1. Task Completion Assessment
@@ -62,3 +51,11 @@ Please output a structured evaluation result including the following fields:
 
 If all tasks are completed, please provide a concise yet comprehensive summary, including achieved goals, delivered value, and possible subsequent action recommendations.
 """ 
+
+USER_PROMPT = """
+User Goal: {goal}
+Task Plan List: {tasks}
+Current Task Being Executed: {current_task}
+Task Execution History:
+{execution_history}
+"""
