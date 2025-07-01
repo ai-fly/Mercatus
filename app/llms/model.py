@@ -1,10 +1,10 @@
-
-from langchain_google_vertexai import ChatVertexAI
+import os
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
-from app.config import BASE_MODEL_NAME, BASIC_LLM_URL, BASIC_LLM_API_KEY
+from app.config import BASE_MODEL_NAME, BASIC_LLM_URL, BASIC_LLM_API_KEY, GOOGLE_API_KEY
 
-
+os.environ["GOOGLE_API_KEY"] = BASIC_LLM_API_KEY
 
 def get_llm():
     """
@@ -16,6 +16,8 @@ def get_llm():
     return ChatOpenAI(base_url=BASIC_LLM_URL, model=BASE_MODEL_NAME, api_key=SecretStr(BASIC_LLM_API_KEY))
 
 
-
 def get_vertex_model(model_name="gemini-2.5-pro"):
-    return ChatVertexAI(model_name=model_name, project="contraprise-443714", location="global")
+    return ChatGoogleGenerativeAI(
+        model=model_name,
+        google_api_key=SecretStr(GOOGLE_API_KEY)
+    )

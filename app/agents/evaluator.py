@@ -20,8 +20,8 @@ async def evaluator_node(state: AgentState):
     # 创建评估上下文
     eval_context = {
         "goal": state["user_query"],
-        "tasks": state["plan"].tasks,
-        "current_task": state["current_task"],
+        "tasks": [task.task for task in state["plan"].tasks],
+        "current_task": state["plan"].tasks[state["current_task_index"]].task if state["plan"] and state["current_task_index"] < len(state["plan"].tasks) else "No current task",
         "execution_history": state["execution_results"]
     }
 

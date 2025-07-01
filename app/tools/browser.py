@@ -1,8 +1,7 @@
-from typing import Any
 import uuid
 from browser_use import Agent as BrowserAgent, Browser, BrowserConfig
 from langchain_core.tools import tool
-from app.llms.model import get_llm
+from app.llms.model import get_vertex_model
 
 
 BROWSER_HISTORY_DIR = "artifacts/browser_history"
@@ -28,7 +27,7 @@ async def browser_use_tool(instruction: str) -> str:
     generated_gif_path = f"{BROWSER_HISTORY_DIR}/{uuid.uuid4()}.gif"
     agent = BrowserAgent(
         task=instruction,
-        llm=get_llm(),
+        llm=get_vertex_model(),
         browser=browser,
         generate_gif=generated_gif_path,
         use_vision=False,

@@ -25,7 +25,6 @@ langchain-core==0.3.66
 langchain==0.3.26
 langchain-ollama==0.2.2
 langchain-openai==0.3.1
-langchain-google-vertexai==2.0.26
 langsmith==0.3.45
 markdownify==0.14.1
 mcp==1.9.2
@@ -67,3 +66,4 @@ langchain-mcp-adapters==0.1.7
 langgraph-supervisor==0.0.27
 fastapi[standard]
 uvicorn[standard]
+langchain-google-genai==2.1.6
