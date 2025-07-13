@@ -1,25 +1,25 @@
 import logging
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from app.agents.evaluator import create_evaluator_node
 from app.agents.executor import create_executor_node
 from app.agents.planner import create_planner_node
 from app.experts.expert import ExpertBase, ExpertTask
 from app.config import settings
-from app.experts.prompts.henry_prompt import (
-    HENRY_PLANNER_SYSTEM_PROMPT, HENRY_PLANNER_TASK_PROMPT,
-    HENRY_EXECUTOR_SYSTEM_PROMPT, HENRY_EXECUTOR_TASK_PROMPT,
-    HENRY_EVALUATOR_SYSTEM_PROMPT, HENRY_EVALUATOR_TASK_PROMPT
+from app.experts.prompts.review_prompt import (
+    REVIEW_PLANNER_SYSTEM_PROMPT, REVIEW_PLANNER_TASK_PROMPT,
+    REVIEW_EXECUTOR_SYSTEM_PROMPT, REVIEW_EXECUTOR_TASK_PROMPT,
+    REVIEW_EVALUATOR_SYSTEM_PROMPT, REVIEW_EVALUATOR_TASK_PROMPT
 )
 from app.types.output import (
-    HenryPlannerResult, HenryEvaluatorResult, HenryExecutorResult,
+    ReviewPlannerResult, ReviewEvaluatorResult, ReviewExecutorResult,
     Platform, Region, ComplianceStatus, PolicyViolation,
     PlatformComplianceResult, RegionalComplianceResult,
     ContentAnalysis
 )
 
 
-class HenryExpert(ExpertBase):
+class ReviewExpert(ExpertBase):
     """
     Content Review Expert Henry
     Responsible for content compliance checking, platform policy validation, and regional law review
@@ -297,7 +297,7 @@ class HenryExpert(ExpertBase):
         """Execute content review task"""
         try:
             # 1. 制定内容审查计划
-            planner_task_prompt = HENRY_PLANNER_TASK_PROMPT.format(
+            planner_task_prompt = REVIEW_PLANNER_TASK_PROMPT.format(
                 task_name=task.task_name,
                 task_description=task.task_description,
                 task_goal=task.task_goal,
@@ -307,11 +307,11 @@ class HenryExpert(ExpertBase):
                 content_types=getattr(task, 'content_types', [])
             )
             
-            plan_result: HenryPlannerResult = await self.planner_agent.ainvoke(
+            plan_result: ReviewPlannerResult = await self.planner_agent.ainvoke(
                 messages=[{"role": "user", "content": planner_task_prompt}]
             )
             
-            logging.info(f"Henry generated review plan with {len(plan_result.tasks)} tasks")
+            logging.info(f"ReviewExpert generated review plan with {len(plan_result.tasks)} tasks")
 
             # 2. 执行内容审查
             total_tasks = "\n\n".join([
@@ -319,22 +319,22 @@ class HenryExpert(ExpertBase):
                 for task in plan_result.tasks
             ])
 
-            unfinished_tasks: List[HenryEvaluatorResult] = []
+            unfinished_tasks: List[ReviewEvaluatorResult] = []
             
             for retry_count in range(self.retries):
-                logging.info(f"Henry review attempt {retry_count + 1}/{self.retries}")
+                logging.info(f"ReviewExpert review attempt {retry_count + 1}/{self.retries}")
                 
                 unfinished_tasks_prompt = "\n\n".join([
                     f"task_name: {task.task_name}\ntask_description: {task.task_description}"
                     for task in unfinished_tasks
                 ])
 
-                executor_task_prompt = HENRY_EXECUTOR_TASK_PROMPT.format(
+                executor_task_prompt = REVIEW_EXECUTOR_TASK_PROMPT.format(
                     total_tasks=total_tasks,
                     unfinished_tasks=unfinished_tasks_prompt
                 )
                 
-                executor_result: HenryExecutorResult = await self.executor_agent.ainvoke(
+                executor_result: ReviewExecutorResult = await self.executor_agent.ainvoke(
                     messages=[{"role": "user", "content": executor_task_prompt}]
                 )
                 
@@ -346,12 +346,12 @@ class HenryExpert(ExpertBase):
                     for item in executor_result.items
                 ])
                 
-                evaluator_task_prompt = HENRY_EVALUATOR_TASK_PROMPT.format(
+                evaluator_task_prompt = REVIEW_EVALUATOR_TASK_PROMPT.format(
                     tasks=total_tasks,
                     results=executor_results_prompt
                 )
                 
-                evaluator_result: HenryEvaluatorResult = await self.evaluator_agent.ainvoke(
+                evaluator_result: ReviewEvaluatorResult = await self.evaluator_agent.ainvoke(
                     messages=[{"role": "user", "content": evaluator_task_prompt}]
                 )
 
@@ -391,9 +391,9 @@ class HenryExpert(ExpertBase):
 
     def create_agents(self):
         """Create agent nodes"""
-        self.planner_agent = create_planner_node(HenryPlannerResult, HENRY_PLANNER_SYSTEM_PROMPT)
-        self.executor_agent = create_executor_node(HenryExecutorResult, HENRY_EXECUTOR_SYSTEM_PROMPT)
-        self.evaluator_agent = create_evaluator_node(HenryEvaluatorResult, HENRY_EVALUATOR_SYSTEM_PROMPT)
+        self.planner_agent = create_planner_node(ReviewPlannerResult, REVIEW_PLANNER_SYSTEM_PROMPT)
+        self.executor_agent = create_executor_node(ReviewExecutorResult, REVIEW_EXECUTOR_SYSTEM_PROMPT)
+        self.evaluator_agent = create_evaluator_node(ReviewEvaluatorResult, REVIEW_EVALUATOR_SYSTEM_PROMPT)
 
     def check_platform_compliance(self, content: str, platform: Platform) -> PlatformComplianceResult:
         """检查平台合规性"""

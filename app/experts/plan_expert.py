@@ -4,27 +4,11 @@ from app.agents.executor import create_executor_node
 from app.agents.planner import create_planner_node
 from app.experts.expert import ExpertBase, ExpertTask
 from app.config import settings
-from app.experts.prompts.marketing_planner_prompt import EVALUATOR_SYSTEM_PROMPT, EVALUATOR_TASK_PROMPT, EXECUTOR_SYSTEM_PROMPT, EXECUTOR_TASK_PROMPT, PLANNER_SYSTEM_PROMPT, PLANNER_TASK_PROMPT
-from app.types.output import AgentEvaluatorResult, AgentExecutorResult, AgentPlannerResult
+from app.experts.prompts.planner_prompt import EVALUATOR_SYSTEM_PROMPT, EVALUATOR_TASK_PROMPT, EXECUTOR_SYSTEM_PROMPT, EXECUTOR_TASK_PROMPT, PLANNER_SYSTEM_PROMPT, PLANNER_TASK_PROMPT
+from app.types.output import PlannerResult, EvaluatorResult, ExecutorResult
 
 
-class MarketingPlannerResult(AgentPlannerResult):
-    """
-    Marketing strategy expert task
-    """
-
-class MarketingPlannerEvaluatorResult(AgentEvaluatorResult):
-    """
-    Marketing strategy expert task evaluation result
-    """
-
-class MarketingPlannerExecutorResult(AgentExecutorResult):
-    """
-    Marketing strategy expert task execution result
-    """
-
-
-class JeffExpert(ExpertBase):
+class PlanExpert(ExpertBase):
     """
     Marketing strategy expert responsible for generating marketing strategies based on user needs and platform policies
     """
@@ -35,24 +19,24 @@ class JeffExpert(ExpertBase):
     async def run(self, task: ExpertTask):
         # 1. Generate a marketing plan
         planner_task_prompt = PLANNER_TASK_PROMPT.format(**task.model_dump(mode="json"))
-        plan_result: MarketingPlannerResult = await self.planner_agent.ainvoke(messages=[{"role": "user", "content": planner_task_prompt}])
+        plan_result: PlannerResult = await self.planner_agent.ainvoke(messages=[{"role": "user", "content": planner_task_prompt}])
 
         # 2. Execute the marketing plan
         total_tasks = "\n\n".join([f"task_name: {task.task_name}\ntask_description: {task.task_description}\ntask_goal: {task.task_goal}" for task in plan_result.tasks])
 
-        unfinished_tasks: list[MarketingPlannerEvaluatorResult] = []
+        unfinished_tasks: list[EvaluatorResult] = []
         for _ in range(self.retries):
             unfinished_tasks_prompt = "\n\n".join([f"task_name: {task.task_name}\ntask_description: {task.task_description}" for task in unfinished_tasks])
 
             executor_task_prompt = EXECUTOR_TASK_PROMPT.format(total_tasks=total_tasks, unfinished_tasks=unfinished_tasks_prompt)
-            executor_result: MarketingPlannerExecutorResult = await self.executor_agent.ainvoke(messages=[{"role": "user", "content": executor_task_prompt}])
+            executor_result: ExecutorResult = await self.executor_agent.ainvoke(messages=[{"role": "user", "content": executor_task_prompt}])
 
             # 3. Evaluate the marketing plan
             executor_results_prompt = "\n\n".join([f"task_name: {item.task_name}\ntask_description: {item.task_description}\ntask_result: {item.task_result}" for item in executor_result.items])
             evaluator_task_prompt = EVALUATOR_TASK_PROMPT.format(
                 tasks=total_tasks, results=executor_results_prompt
             )
-            evaluator_result: MarketingPlannerEvaluatorResult = await self.evaluator_agent.ainvoke(messages=[{"role": "user", "content": evaluator_task_prompt}])
+            evaluator_result: EvaluatorResult = await self.evaluator_agent.ainvoke(messages=[{"role": "user", "content": evaluator_task_prompt}])
 
             if len(evaluator_result.unfinished_tasks) == 0:
                 logging.info("Marketing plan is finished")
@@ -62,6 +46,6 @@ class JeffExpert(ExpertBase):
                 unfinished_tasks = evaluator_result.unfinished_tasks
 
     def create_agents(self):
-        self.planner_agent = create_planner_node(MarketingPlannerResult, PLANNER_SYSTEM_PROMPT)
-        self.executor_agent = create_executor_node(MarketingPlannerExecutorResult, EXECUTOR_SYSTEM_PROMPT)
-        self.evaluator_agent = create_evaluator_node(MarketingPlannerEvaluatorResult, EVALUATOR_SYSTEM_PROMPT)
+        self.planner_agent = create_planner_node(PlannerResult, PLANNER_SYSTEM_PROMPT)
+        self.executor_agent = create_executor_node(ExecutorResult, EXECUTOR_SYSTEM_PROMPT)
+        self.evaluator_agent = create_evaluator_node(EvaluatorResult, EVALUATOR_SYSTEM_PROMPT)

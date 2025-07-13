@@ -4,7 +4,7 @@ from app.agents.executor import create_executor_node
 from app.agents.planner import create_planner_node
 from app.experts.expert import ExpertBase, ExpertTask
 from app.config import settings
-from app.experts.prompts.monica_prompt import (
+from app.experts.prompts.content_prompt import (
     MONICA_PLANNER_SYSTEM_PROMPT, MONICA_PLANNER_TASK_PROMPT,
     MONICA_EXECUTOR_SYSTEM_PROMPT, MONICA_EXECUTOR_TASK_PROMPT,
     MONICA_EVALUATOR_SYSTEM_PROMPT, MONICA_EVALUATOR_TASK_PROMPT
@@ -16,7 +16,7 @@ from app.types.output import (
 from typing import List, Dict, Any
 
 
-class MonicaExpert(ExpertBase):
+class ContentExpert(ExpertBase):
     """
     Content Generation Expert Monica
     Responsible for generating platform-adapted content based on marketing strategies using various marketing techniques

@@ -206,22 +206,22 @@ class AgentExecutorResult(BaseModel):
     items: list[AgentExecutorResultItem] = Field(description="The items of the execution")
 
 
-# === Monica Specific Agent Types ===
+# === Content Specific Agent Types ===
 
-class MonicaPlannerResult(AgentPlannerResult):
+class ContentPlannerResult(AgentPlannerResult):
     """Monica content generation plan result"""
     content_strategy: ContentGenerationStrategy = Field(description="Content strategy")
     target_platforms: List[Platform] = Field(description="Target platforms")
     content_types: List[ContentType] = Field(description="Content types")
 
 
-class MonicaEvaluatorResult(AgentEvaluatorResult):
+class ContentEvaluatorResult(AgentEvaluatorResult):
     """Monica content generation evaluation result"""
     quality_assessment: ContentQualityMetrics = Field(description="Quality assessment")
     improvement_suggestions: List[str] = Field(description="Improvement suggestions", default_factory=list)
 
 
-class MonicaExecutorResult(AgentExecutorResult):
+class ContentExecutorResult(AgentExecutorResult):
     """Monica content generation execution result"""
     generated_content: List[PlatformContent] = Field(description="Generated content")
     performance_metrics: Dict[str, float] = Field(description="Performance metrics")
@@ -229,20 +229,38 @@ class MonicaExecutorResult(AgentExecutorResult):
 
 # === Henry Specific Agent Types ===
 
-class HenryPlannerResult(AgentPlannerResult):
+class ReviewPlannerResult(AgentPlannerResult):
     """Henry content review plan result"""
     review_criteria: List[str] = Field(description="Review criteria")
     target_platforms: List[Platform] = Field(description="Target platforms")
     target_regions: List[Region] = Field(description="Target regions")
 
 
-class HenryEvaluatorResult(AgentEvaluatorResult):
+class ReviewEvaluatorResult(AgentEvaluatorResult):
     """Henry content review evaluation result"""
     compliance_assessment: Dict[str, float] = Field(description="Compliance assessment")
     risk_evaluation: str = Field(description="Risk evaluation")
 
 
-class HenryExecutorResult(AgentExecutorResult):
+class ReviewExecutorResult(AgentExecutorResult):
     """Henry content review execution result"""
     review_results: List[HenryResult] = Field(description="Review results")
     final_decision: ComplianceStatus = Field(description="Final decision")
+
+
+class PlannerResult(AgentPlannerResult):
+    """
+    Marketing strategy expert task
+    """
+
+
+class EvaluatorResult(AgentEvaluatorResult):
+    """
+    Marketing strategy expert task evaluation result
+    """
+
+
+class ExecutorResult(AgentExecutorResult):
+    """
+    Marketing strategy expert task execution result
+    """
