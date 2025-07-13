@@ -14,6 +14,9 @@ def setup_logger(name="mercatus", log_level=logging.DEBUG):
     Returns:
         Configured logger
     """
+    # Suppress specific warnings
+    logging.getLogger("langchain_google_genai._function_utils").setLevel(logging.ERROR)
+    
     # Create log directory
     log_dir = "logs"
     if not os.path.exists(log_dir):

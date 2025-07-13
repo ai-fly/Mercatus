@@ -4,6 +4,7 @@ from typing_extensions import TypedDict
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 
+from app.experts.expert import ExpertTask
 from app.types.output import TaskItem, UserQueryPlan, EvaluatorResult
 
 
@@ -28,30 +29,8 @@ class ExecutorContext:
 class AgentState(TypedDict):
     """State shared between all agents in the workflow"""
 
-    # 消息历史
-    messages: Annotated[List[AnyMessage], add_messages]
+    task: ExpertTask
 
-    # 用户原始查询
-    user_query: str
+    feedbacks: list[str]
 
-    # 规划阶段的输出
-    plan: UserQueryPlan | None
-    current_task_index: int
-
-    # 执行阶段的状态
-    execution_results: List[str]
-    current_execution_result: str | None
-
-    # 评估阶段的输出
-    evaluation_result: EvaluatorResult | None
-
-    # 整体工作流状态
-    workflow_status: str  # "planning", "executing", "evaluating", "completed", "failed"
-
-    # 错误信息
-    error_message: str | None
-
-    # 添加必需字段
-    remaining_steps: int
-
-    structured_response: Union[UserQueryPlan, EvaluatorResult, None]
+    
