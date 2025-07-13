@@ -1,3 +1,4 @@
+import asyncio
 import os
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -15,3 +16,8 @@ mcp_servers = MultiServerMCPClient(
         }
     }
 )
+
+
+def get_tools():
+    return asyncio.run(mcp_servers.get_tools())
+    
