@@ -1,98 +1,100 @@
-from app.agents.planner import  planner_node
-from app.agents.executor import executor_node
-from app.agents.evaluator import evaluator_node
-from app.utils.logging import setup_logger
-from app.agents.state import AgentState
-from langgraph.graph import StateGraph, START, END
+import operator
+from typing import Annotated, Sequence, TypedDict
 
-class Manager:
-    """Class that manages AI agent workflow, coordinating the plan-execute-evaluate cycle"""
+from langchain_core.messages import BaseMessage
+from langgraph.graph import END, StateGraph, START
+from langgraph.prebuilt import ToolNode
 
-    def __init__(self):
-        """Initialize manager and set up logging"""
-        self.logger = setup_logger(name="manager")
-
-    async def run(self, query: str) -> str:
-        """
-        Execute the complete AI agent workflow
-
-        Args:
-            query: User input question
-
-        Returns:
-            str: Task completion result
-        """
-        self.logger.info(f"Starting to process user query: {query}")
+from app.agents.evaluator import create_evaluator_node
+from app.agents.executor import create_executor_node
+from app.agents.planner import create_planner_node
+from app.config import settings
+from app.types.context import AppContext
+from app.types.output import AgentEvaluatorResult, AgentExecutorResult, AgentPlannerResult
 
 
-        # 条件路由函数
-        def should_continue(state: AgentState):
-            """决定是否继续执行任务"""
-            if state["workflow_status"] == "planning_completed":
-                return "executor"
-            elif state["workflow_status"] == "executing":
-                # 检查是否还有更多任务
-                if state["plan"] and state["current_task_index"] < len(state["plan"].tasks):
-                    return "executor"  # 继续执行下一个任务
-                else:
-                    return "evaluator"  # 所有任务完成，进入评估
-            elif state["workflow_status"] in ["execution_completed", "evaluating"]:
-                return "evaluator"
-            else:
-                return END
+class AgentState(TypedDict):
+    """Agent state management"""
+    messages: Annotated[Sequence[BaseMessage], operator.add]
+    planner_result: AgentPlannerResult
+    executor_result: AgentExecutorResult
+    evaluator_result: AgentEvaluatorResult
 
-        # 构建状态图
-        builder = StateGraph(AgentState)
+
+def should_continue(state: AgentState) -> str:
+    """Conditional routing function"""
+    
+    """Decide whether to continue executing tasks"""
+    evaluator_result = state.get("evaluator_result")
+    
+    # Check if there are more tasks
+    if evaluator_result and len(evaluator_result.unfinished_tasks) > 0:
+        return "executor"  # Continue executing next task
+    else:
+        return "evaluator"  # All tasks completed, proceed to evaluation
+
+
+def create_agent_workflow(context: AppContext):
+    """Create agent workflow"""
+    
+    # Build state graph
+    workflow = StateGraph(AgentState)
+    
+    # Add nodes
+    workflow.add_node("planner", create_planner_node(AgentPlannerResult, ""))
+    workflow.add_node("executor", create_executor_node(AgentExecutorResult, ""))
+    workflow.add_node("evaluator", create_evaluator_node(AgentEvaluatorResult, ""))
+    
+    # Add edges
+    workflow.add_edge(START, "planner")
+    workflow.add_edge("planner", "executor")
+    workflow.add_conditional_edges(
+        "executor",
+        should_continue,
+        {
+            "executor": "executor",
+            "evaluator": "evaluator",
+        },
+    )
+    workflow.add_edge("evaluator", END)
+    
+    return workflow
+
+
+class AgentManager:
+    """Agent manager for coordinating multi-agent workflows"""
+    
+    def __init__(self, context: AppContext):
+        self.context = context
+        self.workflow = create_agent_workflow(context)
         
-        # 添加节点
-        builder.add_node("planner", planner_node)
-        builder.add_node("executor", executor_node)
-        builder.add_node("evaluator", evaluator_node)
+    async def run(self, input_data: dict) -> dict:
+        """Run the agent workflow"""
         
-        # 添加边
-        builder.add_edge(START, "planner")
-        builder.add_conditional_edges(
-            "planner",
-            should_continue,
-            {
-                "executor": "executor",
-                "evaluator": "evaluator",
-                END: END
-            }
-        )
-        builder.add_conditional_edges(
-            "executor",
-            should_continue,
-            {
-                "executor": "executor",
-                "evaluator": "evaluator",
-                END: END
-            }
-        )
-        builder.add_edge("evaluator", END)
-
-        # 编译并运行
-        app = builder.compile()
+        # Compile and run
+        app = self.workflow.compile()
         
-        # 初始状态
+        # Initial state
         initial_state = {
-            "messages": [{"role": "user", "content": query}],
-            "user_query": query,
-            "plan": {},
-            "current_task_index": 0,
-            "execution_results": [],
-            "current_execution_result": None,
-            "evaluation_result": None,
-            "workflow_status": "planning",
-            "error_message": None
+            "messages": [{"role": "user", "content": str(input_data)}],
+            "planner_result": None,
+            "executor_result": None,
+            "evaluator_result": None
         }
         
-        result = await app.ainvoke(initial_state)
-        
-        # 返回最终结果
-        if result["evaluation_result"]:
-            return result["evaluation_result"].summary
-        elif result["execution_results"]:
-            return result["execution_results"][-1]
-        else:
-            return "Task completed but no results available"
+        try:
+            result = await app.ainvoke(initial_state)
+            
+            # Return final result
+            return {
+                "status": "success",
+                "planner_result": result.get("planner_result"),
+                "executor_result": result.get("executor_result"),
+                "evaluator_result": result.get("evaluator_result")
+            }
+            
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }

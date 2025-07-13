@@ -1,3 +1,6 @@
+from rocketmq.client import Producer, Consumer
+
+
 class RocketMQClient:
     def __init__(self, name_server: str):
         self.name_server = name_server

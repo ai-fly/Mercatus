@@ -10,23 +10,23 @@ from app.types.output import AgentEvaluatorResult, AgentExecutorResult, AgentPla
 
 class MarketingPlannerResult(AgentPlannerResult):
     """
-    营销策略专家任务
+    Marketing strategy expert task
     """
 
 class MarketingPlannerEvaluatorResult(AgentEvaluatorResult):
     """
-    营销策略专家任务评估结果
+    Marketing strategy expert task evaluation result
     """
 
 class MarketingPlannerExecutorResult(AgentExecutorResult):
     """
-    营销策略专家任务执行结果
+    Marketing strategy expert task execution result
     """
 
 
-class MarketingPlannerExpert(ExpertBase):
+class JeffExpert(ExpertBase):
     """
-    营销策略专家，负责根据用户需求和平台政策，生成营销策略
+    Marketing strategy expert responsible for generating marketing strategies based on user needs and platform policies
     """
     def __init__(self):
         super().__init__("Jeff", "Jeff is a marketing planner expert")
@@ -61,7 +61,7 @@ class MarketingPlannerExpert(ExpertBase):
                 logging.info("Marketing plan is not finished, retrying...")
                 unfinished_tasks = evaluator_result.unfinished_tasks
 
-    def  create_agents(self):
+    def create_agents(self):
         self.planner_agent = create_planner_node(MarketingPlannerResult, PLANNER_SYSTEM_PROMPT)
         self.executor_agent = create_executor_node(MarketingPlannerExecutorResult, EXECUTOR_SYSTEM_PROMPT)
         self.evaluator_agent = create_evaluator_node(MarketingPlannerEvaluatorResult, EVALUATOR_SYSTEM_PROMPT)

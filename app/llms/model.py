@@ -4,8 +4,6 @@ from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 from app.config import BASE_MODEL_NAME, BASIC_LLM_URL, BASIC_LLM_API_KEY, GOOGLE_API_KEY
 
-os.environ["GOOGLE_API_KEY"] = BASIC_LLM_API_KEY
-
 def get_llm():
     """
     get the llm model instance
