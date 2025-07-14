@@ -68,3 +68,4 @@ langgraph-supervisor==0.0.27
 fastapi[standard]
 uvicorn[standard]
 langchain-google-genai==2.1.6
+redis==6.2.0

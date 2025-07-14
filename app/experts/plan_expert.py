@@ -12,8 +12,8 @@ class PlanExpert(ExpertBase):
     """
     Marketing strategy expert responsible for generating marketing strategies based on user needs and platform policies
     """
-    def __init__(self):
-        super().__init__("Jeff", "Jeff is a marketing planner expert")
+    def __init__(self, index: int = 1):
+        super().__init__(f"Jeff {index}", f"Jeff {index} is a marketing planner expert")
         self.inbox_topic = f"{settings.rocketmq_topic_prefix}_inbox_jeff"
 
     async def run(self, task: ExpertTask):

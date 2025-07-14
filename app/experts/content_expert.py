@@ -22,8 +22,8 @@ class ContentExpert(ExpertBase):
     Responsible for generating platform-adapted content based on marketing strategies using various marketing techniques
     """
     
-    def __init__(self):
-        super().__init__("Monica", "Monica is a content generation expert specializing in platform-adapted content creation with marketing techniques")
+    def __init__(self, index: int = 1):
+        super().__init__(f"Monica {index}", f"Monica {index} is a content generation expert specializing in platform-adapted content creation with marketing techniques")
         self.inbox_topic = f"{settings.rocketmq_topic_prefix}_inbox_monica"
         
         # Marketing techniques library

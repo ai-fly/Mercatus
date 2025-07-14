@@ -25,8 +25,8 @@ class ReviewExpert(ExpertBase):
     Responsible for content compliance checking, platform policy validation, and regional law review
     """
     
-    def __init__(self):
-        super().__init__("Henry", "Henry is a content review expert specializing in compliance checking and regional law validation")
+    def __init__(self, index: int = 1):
+        super().__init__(f"Henry {index}", f"Henry {index} is a content review expert specializing in compliance checking and regional law validation")
         self.inbox_topic = f"{settings.rocketmq_topic_prefix}_inbox_henry"
         
         # Platform policy configuration
