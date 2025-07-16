@@ -15,6 +15,7 @@ from app.experts.content_expert import ContentExpert
 from app.experts.rewiew_expert import ReviewExpert
 from app.clients.redis_client import redis_client_instance
 from app.config import settings
+from app.utils.logging import get_business_logger, get_performance_logger
 
 
 class TeamManager:
@@ -27,6 +28,9 @@ class TeamManager:
         """Initialize TeamManager"""
         self.redis_client = redis_client_instance.get_redis_client()
         self.logger = logging.getLogger("TeamManager")
+        self.business_logger = get_business_logger()
+        self.performance_logger = get_performance_logger()
+        
         self.teams: Dict[str, Team] = {}
         self.blackboards: Dict[str, BlackBoard] = {}
         self.expert_instances: Dict[str, Dict[str, ExpertBase]] = {}  # team_id -> instance_id -> expert
@@ -37,6 +41,8 @@ class TeamManager:
             ExpertRole.EXECUTOR: ContentExpert,
             ExpertRole.EVALUATOR: ReviewExpert
         }
+        
+        self.logger.info("TeamManager initialized successfully")
     
     # === Team Management ===
     
@@ -45,74 +51,125 @@ class TeamManager:
         team_name: str,
         organization_id: str,
         owner_id: str,
-        owner_username: str,
-        configuration: Optional[TeamConfiguration] = None
+        owner_username: str
     ) -> Team:
-        """Create a new team with default expert instances"""
+        """Create a new team"""
         
-        team = Team(
-            team_name=team_name,
+        with self.performance_logger.time_operation(
+            "create_team",
             organization_id=organization_id,
-            owner_id=owner_id,
-            configuration=configuration or TeamConfiguration()
-        )
-        
-        # Add owner as team member
-        owner_member = TeamMember(
-            user_id=owner_id,
-            username=owner_username,
-            role=TeamRole.OWNER
-        )
-        team.members.append(owner_member)
-        
-        # Store team
-        await self._store_team(team)
-        self.teams[team.team_id] = team
-        
-        # Create BlackBoard for the team
-        blackboard = BlackBoard(team.team_id)
-        self.blackboards[team.team_id] = blackboard
-        
-        # Initialize expert instances
-        await self._initialize_team_experts(team)
-        
-        self.logger.info(f"Created team {team.team_id}: {team_name}")
-        return team
+            owner_id=owner_id
+        ):
+            self.logger.debug(
+                f"Creating team: {team_name} for organization {organization_id}",
+                extra={
+                    'team_name': team_name,
+                    'organization_id': organization_id,
+                    'user_id': owner_id,
+                    'action': 'team_creation_start'
+                }
+            )
+            
+            team = Team(
+                team_id=str(uuid4()),
+                team_name=team_name,
+                organization_id=organization_id,
+                owner_id=owner_id,
+                configuration=TeamConfiguration()
+            )
+            
+            # Add owner as team member
+            owner_member = TeamMember(
+                user_id=owner_id,
+                username=owner_username,
+                role=TeamRole.OWNER
+            )
+            team.members.append(owner_member)
+            
+            # Store team
+            await self._store_team(team)
+            self.teams[team.team_id] = team
+            
+            # Create default expert instances
+            await self._create_default_experts(team.team_id)
+            
+            self.logger.info(
+                f"Created team {team.team_id}: {team_name}",
+                extra={
+                    'team_id': team.team_id,
+                    'team_name': team_name,
+                    'organization_id': organization_id,
+                    'owner_id': owner_id,
+                    'member_count': len(team.members),
+                    'expert_count': len(team.expert_instances),
+                    'action': 'team_created'
+                }
+            )
+            
+            return team
     
     async def add_team_member(
         self,
         team_id: str,
         user_id: str,
         username: str,
-        role: TeamRole = TeamRole.MEMBER,
-        added_by: str = None
+        role: TeamRole,
+        added_by: str
     ) -> bool:
         """Add a member to a team"""
         
-        team = await self.get_team(team_id)
-        if not team:
-            return False
-        
-        # Check if user already exists
-        for member in team.members:
-            if member.user_id == user_id:
-                self.logger.warning(f"User {user_id} already member of team {team_id}")
+        with self.performance_logger.time_operation(
+            "add_team_member",
+            team_id=team_id,
+            target_user_id=user_id,
+            role=role.value
+        ):
+            team = await self.get_team(team_id)
+            if not team:
+                self.logger.error(
+                    f"Cannot add member to team {team_id}: team not found",
+                    extra={'team_id': team_id, 'user_id': added_by, 'target_user_id': user_id}
+                )
                 return False
-        
-        # Add new member
-        new_member = TeamMember(
-            user_id=user_id,
-            username=username,
-            role=role
-        )
-        team.members.append(new_member)
-        team.updated_at = datetime.now()
-        
-        await self._store_team(team)
-        self.teams[team_id] = team
-        
-        self.logger.info(f"Added member {user_id} to team {team_id}")
-        return True
+            
+            # Check if user is already a member
+            if any(member.user_id == user_id for member in team.members):
+                self.logger.warning(
+                    f"User {user_id} already member of team {team_id}",
+                    extra={
+                        'team_id': team_id,
+                        'user_id': added_by,
+                        'target_user_id': user_id,
+                        'action': 'add_member_duplicate'
+                    }
+                )
+                return False
+            
+            # Add member
+            member = TeamMember(
+                user_id=user_id,
+                username=username,
+                role=role
+            )
+            team.members.append(member)
+            team.updated_at = datetime.now()
+            
+            await self._store_team(team)
+            
+            self.logger.info(
+                f"Added member {user_id} to team {team_id}",
+                extra={
+                    'team_id': team_id,
+                    'user_id': added_by,
+                    'target_user_id': user_id,
+                    'target_username': username,
+                    'role': role.value,
+                    'total_members': len(team.members),
+                    'action': 'member_added'
+                }
+            )
+            
+            return True
     
     async def remove_team_member(self, team_id: str, user_id: str, removed_by: str) -> bool:
         """Remove a member from a team"""
@@ -181,55 +238,90 @@ class TeamManager:
     ) -> Optional[ExpertInstance]:
         """Create a new expert instance for a team"""
         
-        team = await self.get_team(team_id)
-        if not team:
-            return None
-        
-        # Check team limits
-        current_count = len([e for e in team.expert_instances if e.expert_role == expert_role])
-        max_count = self._get_max_instances_for_role(team.configuration, expert_role)
-        
-        if current_count >= max_count:
-            self.logger.warning(f"Team {team_id} at max {expert_role.value} instances ({max_count})")
-            return None
-        
-        # Generate instance name if not provided
-        if not instance_name:
-            instance_name = f"{expert_role.value.title()} {current_count + 1}"
-        
-        # Create expert instance metadata
-        instance = ExpertInstance(
-            instance_id=str(uuid4()),
-            expert_role=expert_role,
-            instance_name=instance_name,
-            status="active",
-            max_concurrent_tasks=max_concurrent_tasks,
-            specializations=specializations or []
-        )
-        
-        # Create actual expert object
-        expert_class = self.expert_classes[expert_role]
-        expert_obj = expert_class(index=current_count + 1)
-        
-        # Store in team
-        team.expert_instances.append(instance)
-        team.updated_at = datetime.now()
-        await self._store_team(team)
-        
-        # Store expert instance in memory
-        if team_id not in self.expert_instances:
-            self.expert_instances[team_id] = {}
-        self.expert_instances[team_id][instance.instance_id] = expert_obj
-        
-        # Register with BlackBoard
-        blackboard = self.get_blackboard(team_id)
-        if blackboard:
-            await blackboard.register_expert_instance(
-                expert_role, instance_name, max_concurrent_tasks, specializations
+        with self.performance_logger.time_operation(
+            "create_expert_instance",
+            team_id=team_id,
+            expert_role=expert_role.value
+        ):
+            team = await self.get_team(team_id)
+            if not team:
+                self.logger.error(
+                    f"Cannot create expert for team {team_id}: team not found",
+                    extra={'team_id': team_id, 'expert_role': expert_role.value}
+                )
+                return None
+            
+            # Check team limits
+            current_count = len([e for e in team.expert_instances if e.expert_role == expert_role])
+            max_count = self._get_max_instances_for_role(team.configuration, expert_role)
+            
+            if current_count >= max_count:
+                self.logger.warning(
+                    f"Team {team_id} at max {expert_role.value} instances ({max_count})",
+                    extra={
+                        'team_id': team_id,
+                        'expert_role': expert_role.value,
+                        'current_count': current_count,
+                        'max_count': max_count,
+                        'action': 'expert_creation_limit_reached'
+                    }
+                )
+                return None
+            
+            # Generate instance name if not provided
+            if not instance_name:
+                instance_name = f"{expert_role.value.title()} {current_count + 1}"
+            
+            # Create expert instance metadata
+            instance = ExpertInstance(
+                instance_id=str(uuid4()),
+                expert_role=expert_role,
+                instance_name=instance_name,
+                status="active",
+                max_concurrent_tasks=max_concurrent_tasks,
+                specializations=specializations or []
             )
-        
-        self.logger.info(f"Created expert instance {instance.instance_id}: {instance_name}")
-        return instance
+            
+            # Create actual expert object
+            expert_class = self.expert_classes[expert_role]
+            expert_obj = expert_class(
+                name=instance_name,
+                description=f"{expert_role.value} expert instance",
+                index=current_count + 1
+            )
+            
+            # Store in team
+            team.expert_instances.append(instance)
+            team.updated_at = datetime.now()
+            await self._store_team(team)
+            
+            # Store expert instance in memory
+            if team_id not in self.expert_instances:
+                self.expert_instances[team_id] = {}
+            self.expert_instances[team_id][instance.instance_id] = expert_obj
+            
+            # Register with BlackBoard
+            blackboard = self.get_blackboard(team_id)
+            if blackboard:
+                await blackboard.register_expert_instance(
+                    expert_role, instance_name, max_concurrent_tasks, specializations
+                )
+            
+            self.logger.info(
+                f"Created expert instance {instance.instance_id}: {instance_name}",
+                extra={
+                    'team_id': team_id,
+                    'expert_instance_id': instance.instance_id,
+                    'expert_role': expert_role.value,
+                    'instance_name': instance_name,
+                    'max_concurrent_tasks': max_concurrent_tasks,
+                    'specializations': specializations or [],
+                    'total_experts': len(team.expert_instances),
+                    'action': 'expert_instance_created'
+                }
+            )
+            
+            return instance
     
     async def scale_experts(self, team_id: str, expert_role: ExpertRole, target_count: int) -> bool:
         """Scale expert instances for a role to target count"""
@@ -345,52 +437,143 @@ class TeamManager:
     async def execute_task(self, team_id: str, task_id: str) -> Dict[str, Any]:
         """Execute a task using assigned expert instance"""
         
-        blackboard = self.get_blackboard(team_id)
-        if not blackboard:
-            return {"status": "error", "message": "Team not found"}
-        
-        task = await blackboard.get_task(task_id)
-        if not task or not task.assignment:
-            return {"status": "error", "message": "Task not found or not assigned"}
-        
-        # Get expert instance
-        expert = await self.get_expert_instance(team_id, task.assignment.expert_instance_id)
-        if not expert:
-            return {"status": "error", "message": "Expert instance not found"}
-        
-        # Start task
-        await blackboard.start_task(task_id, task.assignment.expert_instance_id)
-        
-        try:
-            # Execute task
-            from app.experts.expert import ExpertTask
-            expert_task = ExpertTask(
-                task_name=task.title,
-                task_description=task.description,
-                task_goal=task.goal
+        with self.performance_logger.time_operation(
+            "execute_task",
+            team_id=team_id,
+            task_id=task_id
+        ):
+            self.logger.info(
+                f"Starting task execution for task {task_id}",
+                extra={
+                    'team_id': team_id,
+                    'task_id': task_id,
+                    'action': 'task_execution_request'
+                }
             )
             
-            result = await expert.run(expert_task)
+            blackboard = self.get_blackboard(team_id)
+            if not blackboard:
+                self.logger.error(
+                    f"Team {team_id} not found for task execution",
+                    extra={'team_id': team_id, 'task_id': task_id}
+                )
+                return {"status": "error", "message": "Team not found"}
             
-            # Complete task
-            await blackboard.complete_task(
-                task_id,
-                task.assignment.expert_instance_id,
-                output_data=result,
-                execution_log=[f"Task executed by {expert.name}"]
+            task = await blackboard.get_task(task_id)
+            if not task or not task.assignment:
+                self.logger.error(
+                    f"Task {task_id} not found or not assigned",
+                    extra={
+                        'team_id': team_id,
+                        'task_id': task_id,
+                        'task_exists': task is not None,
+                        'task_assigned': task.assignment is not None if task else False
+                    }
+                )
+                return {"status": "error", "message": "Task not found or not assigned"}
+            
+            # Get expert instance
+            expert = await self.get_expert_instance(team_id, task.assignment.expert_instance_id)
+            if not expert:
+                self.logger.error(
+                    f"Expert instance {task.assignment.expert_instance_id} not found",
+                    extra={
+                        'team_id': team_id,
+                        'task_id': task_id,
+                        'expert_instance_id': task.assignment.expert_instance_id
+                    }
+                )
+                return {"status": "error", "message": "Expert instance not found"}
+            
+            # Log expert details
+            expert_type = task.required_expert_role.value
+            self.logger.info(
+                f"Executing task {task_id} with {expert_type} expert",
+                extra={
+                    'team_id': team_id,
+                    'task_id': task_id,
+                    'expert_type': expert_type,
+                    'expert_instance_id': task.assignment.expert_instance_id,
+                    'task_title': task.title,
+                    'task_priority': task.priority.value,
+                    'action': 'expert_execution_start'
+                }
             )
             
-            return {"status": "completed", "result": result}
+            # Start task
+            await blackboard.start_task(task_id, task.assignment.expert_instance_id)
             
-        except Exception as e:
-            # Fail task
-            await blackboard.fail_task(
-                task_id,
-                task.assignment.expert_instance_id,
-                error_messages=[str(e)]
-            )
+            start_time = datetime.now()
             
-            return {"status": "failed", "error": str(e)}
+            try:
+                # Execute task
+                from app.experts.expert import ExpertTask
+                expert_task = ExpertTask(
+                    task_name=task.title,
+                    task_description=task.description,
+                    task_goal=task.goal
+                )
+                
+                self.logger.debug(
+                    f"Calling expert.run() for task {task_id}",
+                    extra={
+                        'team_id': team_id,
+                        'task_id': task_id,
+                        'expert_type': expert_type,
+                        'task_name': task.title
+                    }
+                )
+                
+                result = await expert.run(expert_task)
+                
+                execution_time = (datetime.now() - start_time).total_seconds()
+                
+                # Complete task
+                await blackboard.complete_task(
+                    task_id,
+                    task.assignment.expert_instance_id,
+                    output_data=result,
+                    execution_log=[f"Task executed by {expert.name}"]
+                )
+                
+                self.logger.info(
+                    f"Task {task_id} completed successfully",
+                    extra={
+                        'team_id': team_id,
+                        'task_id': task_id,
+                        'expert_type': expert_type,
+                        'execution_time': execution_time,
+                        'result_status': result.get('status', 'unknown') if isinstance(result, dict) else 'unknown',
+                        'action': 'task_execution_success'
+                    }
+                )
+                
+                return {"status": "completed", "result": result}
+                
+            except Exception as e:
+                execution_time = (datetime.now() - start_time).total_seconds()
+                
+                self.logger.error(
+                    f"Task {task_id} execution failed: {str(e)}",
+                    extra={
+                        'team_id': team_id,
+                        'task_id': task_id,
+                        'expert_type': expert_type,
+                        'execution_time': execution_time,
+                        'error_type': type(e).__name__,
+                        'action': 'task_execution_failed'
+                    },
+                    exc_info=True
+                )
+                
+                # Fail task
+                await blackboard.fail_task(
+                    task_id,
+                    task.assignment.expert_instance_id,
+                    error_messages=[str(e)]
+                )
+                
+                return {"status": "failed", "error": str(e)}
     
     # === Team Dashboard and Analytics ===
     

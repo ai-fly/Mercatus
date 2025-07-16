@@ -13,6 +13,7 @@ from app.types.blackboard import (
 from app.types.output import Platform, Region, ContentType
 from app.clients.redis_client import redis_client_instance
 from app.config import settings
+from app.utils.logging import get_business_logger, get_performance_logger
 
 
 class BlackBoard:
@@ -26,6 +27,8 @@ class BlackBoard:
         self.team_id = team_id
         self.redis_client = redis_client_instance.get_redis_client()
         self.logger = logging.getLogger(f"BlackBoard-{team_id}")
+        self.business_logger = get_business_logger()
+        self.performance_logger = get_performance_logger()
         
         # Redis key prefixes
         self.task_prefix = f"blackboard:{team_id}:task"
@@ -35,6 +38,8 @@ class BlackBoard:
         self.event_prefix = f"blackboard:{team_id}:event"
         self.notification_prefix = f"blackboard:{team_id}:notification"
         self.comment_prefix = f"blackboard:{team_id}:comment"
+        
+        self.logger.info(f"BlackBoard initialized for team {team_id}")
     
     # === Task Management Methods ===
     
@@ -56,50 +61,85 @@ class BlackBoard:
     ) -> BlackboardTask:
         """Create a new task and add it to the BlackBoard"""
         
-        task = BlackboardTask(
-            team_id=self.team_id,
-            title=title,
-            description=description,
-            goal=goal,
-            required_expert_role=required_expert_role,
-            priority=priority,
-            target_platforms=target_platforms or [],
-            target_regions=target_regions or [],
-            content_types=content_types or [],
-            due_date=due_date,
-            dependencies=dependencies or [],
-            parent_task_id=parent_task_id
-        )
-        
-        if metadata:
-            task.metadata.context_data.update(metadata)
-        
-        # Store task in Redis
-        task_key = f"{self.task_prefix}:{task.task_id}"
-        await self._set_redis_value(task_key, task.model_dump_json())
-        
-        # Update state
-        await self._add_task_to_state(task.task_id, TaskStatus.PENDING)
-        
-        # Create event
-        await self._create_event(
-            task.task_id,
-            "task_created",
-            {"creator_id": creator_id, "priority": priority.value},
-            creator_id
-        )
-        
-        # Send notifications
-        await self._notify_team_members(
-            task.task_id,
-            "task_created",
-            f"New task created: {title}",
-            f"Task '{title}' requires {required_expert_role.value} expert",
-            [creator_id]
-        )
-        
-        self.logger.info(f"Created task {task.task_id}: {title}")
-        return task
+        with self.performance_logger.time_operation(
+            "create_task", 
+            team_id=self.team_id, 
+            expert_role=required_expert_role.value,
+            priority=priority.value
+        ):
+            # 记录任务创建开始
+            self.logger.debug(
+                f"Creating task: {title} for expert role {required_expert_role.value}",
+                extra={
+                    'team_id': self.team_id,
+                    'user_id': creator_id,
+                    'expert_role': required_expert_role.value,
+                    'priority': priority.value
+                }
+            )
+            
+            task = BlackboardTask(
+                team_id=self.team_id,
+                title=title,
+                description=description,
+                goal=goal,
+                required_expert_role=required_expert_role,
+                priority=priority,
+                target_platforms=target_platforms or [],
+                target_regions=target_regions or [],
+                content_types=content_types or [],
+                due_date=due_date,
+                dependencies=dependencies or [],
+                parent_task_id=parent_task_id
+            )
+            
+            if metadata:
+                task.metadata.context_data.update(metadata)
+                self.logger.debug(f"Added metadata to task {task.task_id}: {list(metadata.keys())}")
+            
+            # Store task in Redis
+            task_key = f"{self.task_prefix}:{task.task_id}"
+            await self._set_redis_value(task_key, task.model_dump_json())
+            
+            # Update state
+            await self._add_task_to_state(task.task_id, TaskStatus.PENDING)
+            
+            # Create event
+            await self._create_event(
+                task.task_id,
+                "task_created",
+                {"creator_id": creator_id, "priority": priority.value},
+                creator_id
+            )
+            
+            # Send notifications
+            await self._notify_team_members(
+                task.task_id,
+                "task_created",
+                f"New task created: {title}",
+                f"Task '{title}' requires {required_expert_role.value} expert",
+                [creator_id]
+            )
+            
+            # 使用业务日志记录器
+            self.business_logger.log_task_created(
+                task.task_id, title, self.team_id, creator_id, priority.value
+            )
+            
+            self.logger.info(
+                f"Created task {task.task_id}: {title}",
+                extra={
+                    'task_id': task.task_id,
+                    'team_id': self.team_id,
+                    'user_id': creator_id,
+                    'expert_role': required_expert_role.value,
+                    'priority': priority.value,
+                    'target_platforms': [p.value for p in (target_platforms or [])],
+                    'target_regions': [r.value for r in (target_regions or [])]
+                }
+            )
+            
+            return task
     
     async def assign_task(
         self, 
@@ -110,100 +150,194 @@ class BlackBoard:
     ) -> bool:
         """Assign a task to a specific expert instance"""
         
-        # Get task and expert instance
-        task = await self.get_task(task_id)
-        if not task:
-            self.logger.error(f"Task {task_id} not found")
-            return False
-        
-        expert_instance = await self.get_expert_instance(expert_instance_id)
-        if not expert_instance:
-            self.logger.error(f"Expert instance {expert_instance_id} not found")
-            return False
-        
-        # Check if expert can handle the task
-        if expert_instance.expert_role != task.required_expert_role:
-            self.logger.error(f"Expert role mismatch: {expert_instance.expert_role} != {task.required_expert_role}")
-            return False
-        
-        # Check expert capacity
-        if expert_instance.current_task_count >= expert_instance.max_concurrent_tasks:
-            self.logger.warning(f"Expert instance {expert_instance_id} at capacity")
-            return False
-        
-        # Create assignment
-        assignment = TaskAssignment(
+        with self.performance_logger.time_operation(
+            "assign_task",
+            team_id=self.team_id,
             task_id=task_id,
-            expert_instance_id=expert_instance_id,
-            assigned_by=assigned_by,
-            estimated_duration=estimated_duration
-        )
-        
-        # Update task
-        task.assignment = assignment
-        task.status = TaskStatus.ASSIGNED
-        task.updated_at = datetime.now()
-        
-        # Update expert instance
-        expert_instance.current_task_count += 1
-        expert_instance.last_activity = datetime.now()
-        
-        # Store updates
-        await self._store_task(task)
-        await self._store_expert_instance(expert_instance)
-        
-        # Update state
-        await self._move_task_in_state(task_id, TaskStatus.PENDING, TaskStatus.ASSIGNED)
-        
-        # Create event
-        await self._create_event(
-            task_id,
-            "task_assigned",
-            {"expert_instance_id": expert_instance_id, "assigned_by": assigned_by},
-            assigned_by
-        )
-        
-        # Send notifications
-        await self._notify_team_members(
-            task_id,
-            "task_assigned",
-            f"Task assigned: {task.title}",
-            f"Task assigned to {expert_instance.instance_name}",
-            [assigned_by]
-        )
-        
-        self.logger.info(f"Assigned task {task_id} to expert {expert_instance_id}")
-        return True
+            expert_instance_id=expert_instance_id
+        ):
+            self.logger.debug(
+                f"Attempting to assign task {task_id} to expert {expert_instance_id}",
+                extra={
+                    'task_id': task_id,
+                    'team_id': self.team_id,
+                    'expert_instance_id': expert_instance_id,
+                    'user_id': assigned_by
+                }
+            )
+            
+            # Get task and expert instance
+            task = await self.get_task(task_id)
+            if not task:
+                self.logger.error(
+                    f"Task {task_id} not found",
+                    extra={'task_id': task_id, 'team_id': self.team_id, 'user_id': assigned_by}
+                )
+                return False
+            
+            expert_instance = await self.get_expert_instance(expert_instance_id)
+            if not expert_instance:
+                self.logger.error(
+                    f"Expert instance {expert_instance_id} not found",
+                    extra={
+                        'task_id': task_id,
+                        'team_id': self.team_id,
+                        'expert_instance_id': expert_instance_id,
+                        'user_id': assigned_by
+                    }
+                )
+                return False
+            
+            # Check if expert can handle the task
+            if expert_instance.expert_role != task.required_expert_role:
+                self.logger.warning(
+                    f"Expert role mismatch: {expert_instance.expert_role} != {task.required_expert_role}",
+                    extra={
+                        'task_id': task_id,
+                        'team_id': self.team_id,
+                        'expert_instance_id': expert_instance_id,
+                        'expected_role': task.required_expert_role.value,
+                        'actual_role': expert_instance.expert_role.value,
+                        'user_id': assigned_by
+                    }
+                )
+                return False
+            
+            # Check expert capacity
+            if expert_instance.current_task_count >= expert_instance.max_concurrent_tasks:
+                self.logger.warning(
+                    f"Expert instance {expert_instance_id} at capacity ({expert_instance.current_task_count}/{expert_instance.max_concurrent_tasks})",
+                    extra={
+                        'task_id': task_id,
+                        'team_id': self.team_id,
+                        'expert_instance_id': expert_instance_id,
+                        'current_load': expert_instance.current_task_count,
+                        'max_capacity': expert_instance.max_concurrent_tasks,
+                        'user_id': assigned_by
+                    }
+                )
+                return False
+            
+            # Create assignment
+            assignment = TaskAssignment(
+                task_id=task_id,
+                expert_instance_id=expert_instance_id,
+                assigned_by=assigned_by,
+                estimated_duration=estimated_duration
+            )
+            
+            # Update task
+            task.assignment = assignment
+            task.status = TaskStatus.ASSIGNED
+            task.updated_at = datetime.now()
+            
+            # Update expert instance
+            expert_instance.current_task_count += 1
+            expert_instance.last_activity = datetime.now()
+            
+            # Store updates
+            await self._store_task(task)
+            await self._store_expert_instance(expert_instance)
+            
+            # Update state
+            await self._move_task_in_state(task_id, TaskStatus.PENDING, TaskStatus.ASSIGNED)
+            
+            # Create event
+            await self._create_event(
+                task_id,
+                "task_assigned",
+                {"expert_instance_id": expert_instance_id, "assigned_by": assigned_by},
+                assigned_by
+            )
+            
+            # Send notifications
+            await self._notify_team_members(
+                task_id,
+                "task_assigned",
+                f"Task assigned: {task.title}",
+                f"Task assigned to {expert_instance.instance_name}",
+                [assigned_by]
+            )
+            
+            # 使用业务日志记录器
+            self.business_logger.log_task_assigned(
+                task_id, expert_instance_id, self.team_id, assigned_by
+            )
+            
+            self.logger.info(
+                f"Assigned task {task_id} to expert {expert_instance_id}",
+                extra={
+                    'task_id': task_id,
+                    'team_id': self.team_id,
+                    'expert_instance_id': expert_instance_id,
+                    'expert_type': expert_instance.expert_role.value,
+                    'expert_load': expert_instance.current_task_count,
+                    'user_id': assigned_by,
+                    'estimated_duration': estimated_duration
+                }
+            )
+            
+            return True
     
     async def start_task(self, task_id: str, started_by: str) -> bool:
         """Mark a task as started"""
         
-        task = await self.get_task(task_id)
-        if not task or task.status != TaskStatus.ASSIGNED:
-            return False
-        
-        # Update task
-        task.status = TaskStatus.IN_PROGRESS
-        task.updated_at = datetime.now()
-        if task.assignment:
-            task.assignment.started_at = datetime.now()
-        
-        # Store task
-        await self._store_task(task)
-        
-        # Update state
-        await self._move_task_in_state(task_id, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS)
-        
-        # Create event
-        await self._create_event(
-            task_id,
-            "task_started",
-            {"started_by": started_by},
-            started_by
-        )
-        
-        self.logger.info(f"Started task {task_id}")
-        return True
+        with self.performance_logger.time_operation(
+            "start_task",
+            team_id=self.team_id,
+            task_id=task_id
+        ):
+            task = await self.get_task(task_id)
+            if not task or task.status != TaskStatus.ASSIGNED:
+                self.logger.warning(
+                    f"Cannot start task {task_id}: task not found or not assigned",
+                    extra={
+                        'task_id': task_id,
+                        'team_id': self.team_id,
+                        'current_status': task.status.value if task else 'NOT_FOUND',
+                        'user_id': started_by
+                    }
+                )
+                return False
+            
+            # Update task
+            task.status = TaskStatus.IN_PROGRESS
+            task.updated_at = datetime.now()
+            if task.assignment:
+                task.assignment.started_at = datetime.now()
+            
+            # Store task
+            await self._store_task(task)
+            
+            # Update state
+            await self._move_task_in_state(task_id, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS)
+            
+            # Create event
+            await self._create_event(
+                task_id,
+                "task_started",
+                {"started_by": started_by},
+                started_by
+            )
+            
+            # 记录任务执行开始
+            expert_type = task.assignment.expert_instance_id if task.assignment else "unknown"
+            self.business_logger.log_task_execution_start(
+                task_id, expert_type, self.team_id
+            )
+            
+            self.logger.info(
+                f"Started task {task_id}",
+                extra={
+                    'task_id': task_id,
+                    'team_id': self.team_id,
+                    'expert_instance_id': task.assignment.expert_instance_id if task.assignment else None,
+                    'user_id': started_by,
+                    'start_time': task.assignment.started_at.isoformat() if task.assignment and task.assignment.started_at else None
+                }
+            )
+            
+            return True
     
     async def complete_task(
         self,
@@ -214,61 +348,111 @@ class BlackBoard:
     ) -> bool:
         """Mark a task as completed"""
         
-        task = await self.get_task(task_id)
-        if not task or task.status != TaskStatus.IN_PROGRESS:
-            return False
-        
-        # Update task
-        task.status = TaskStatus.COMPLETED
-        task.updated_at = datetime.now()
-        if output_data:
-            task.output_data.update(output_data)
-        if execution_log:
-            task.execution_log.extend(execution_log)
-        
-        if task.assignment:
-            task.assignment.completed_at = datetime.now()
-            if task.assignment.started_at:
-                duration = (task.assignment.completed_at - task.assignment.started_at).total_seconds() / 60
-                task.assignment.actual_duration = int(duration)
-        
-        # Update expert instance
-        if task.assignment:
-            expert_instance = await self.get_expert_instance(task.assignment.expert_instance_id)
-            if expert_instance:
-                expert_instance.current_task_count -= 1
-                expert_instance.last_activity = datetime.now()
-                # Update performance metrics
-                if "completed_tasks" not in expert_instance.performance_metrics:
-                    expert_instance.performance_metrics["completed_tasks"] = 0
-                expert_instance.performance_metrics["completed_tasks"] += 1
-                await self._store_expert_instance(expert_instance)
-        
-        # Store task
-        await self._store_task(task)
-        
-        # Update state
-        await self._move_task_in_state(task_id, TaskStatus.IN_PROGRESS, TaskStatus.COMPLETED)
-        
-        # Create event
-        await self._create_event(
-            task_id,
-            "task_completed",
-            {"completed_by": completed_by},
-            completed_by
-        )
-        
-        # Send notifications
-        await self._notify_team_members(
-            task_id,
-            "task_completed",
-            f"Task completed: {task.title}",
-            f"Task has been successfully completed",
-            [completed_by]
-        )
-        
-        self.logger.info(f"Completed task {task_id}")
-        return True
+        with self.performance_logger.time_operation(
+            "complete_task",
+            team_id=self.team_id,
+            task_id=task_id
+        ):
+            task = await self.get_task(task_id)
+            if not task or task.status != TaskStatus.IN_PROGRESS:
+                self.logger.warning(
+                    f"Cannot complete task {task_id}: task not found or not in progress",
+                    extra={
+                        'task_id': task_id,
+                        'team_id': self.team_id,
+                        'current_status': task.status.value if task else 'NOT_FOUND',
+                        'user_id': completed_by
+                    }
+                )
+                return False
+            
+            # 计算执行时间
+            execution_time = 0.0
+            if task.assignment and task.assignment.started_at:
+                execution_time = (datetime.now() - task.assignment.started_at).total_seconds()
+                self.logger.debug(f"Task {task_id} execution time: {execution_time:.2f} seconds")
+            
+            # Update task
+            task.status = TaskStatus.COMPLETED
+            task.updated_at = datetime.now()
+            if output_data:
+                task.output_data.update(output_data)
+                self.logger.debug(f"Added output data to task {task_id}: {list(output_data.keys())}")
+            if execution_log:
+                task.execution_log.extend(execution_log)
+                self.logger.debug(f"Added {len(execution_log)} log entries to task {task_id}")
+            
+            if task.assignment:
+                task.assignment.completed_at = datetime.now()
+                if task.assignment.started_at:
+                    duration = (task.assignment.completed_at - task.assignment.started_at).total_seconds() / 60
+                    task.assignment.actual_duration = int(duration)
+            
+            # Update expert instance
+            if task.assignment:
+                expert_instance = await self.get_expert_instance(task.assignment.expert_instance_id)
+                if expert_instance:
+                    expert_instance.current_task_count -= 1
+                    expert_instance.last_activity = datetime.now()
+                    # Update performance metrics
+                    if "completed_tasks" not in expert_instance.performance_metrics:
+                        expert_instance.performance_metrics["completed_tasks"] = 0
+                    expert_instance.performance_metrics["completed_tasks"] += 1
+                    await self._store_expert_instance(expert_instance)
+                    
+                    self.logger.debug(
+                        f"Updated expert {task.assignment.expert_instance_id} metrics",
+                        extra={
+                            'expert_instance_id': task.assignment.expert_instance_id,
+                            'current_load': expert_instance.current_task_count,
+                            'completed_tasks': expert_instance.performance_metrics["completed_tasks"]
+                        }
+                    )
+            
+            # Store task
+            await self._store_task(task)
+            
+            # Update state
+            await self._move_task_in_state(task_id, TaskStatus.IN_PROGRESS, TaskStatus.COMPLETED)
+            
+            # Create event
+            await self._create_event(
+                task_id,
+                "task_completed",
+                {"completed_by": completed_by, "execution_time": execution_time},
+                completed_by
+            )
+            
+            # Send notifications
+            await self._notify_team_members(
+                task_id,
+                "task_completed",
+                f"Task completed: {task.title}",
+                f"Task has been successfully completed",
+                [completed_by]
+            )
+            
+            # 记录任务执行完成
+            expert_type = expert_instance.expert_role.value if task.assignment and expert_instance else "unknown"
+            self.business_logger.log_task_execution_complete(
+                task_id, expert_type, execution_time, self.team_id
+            )
+            
+            self.logger.info(
+                f"Completed task {task_id}",
+                extra={
+                    'task_id': task_id,
+                    'team_id': self.team_id,
+                    'expert_instance_id': task.assignment.expert_instance_id if task.assignment else None,
+                    'expert_type': expert_type,
+                    'execution_time': execution_time,
+                    'user_id': completed_by,
+                    'output_data_keys': list(output_data.keys()) if output_data else [],
+                    'log_entries_count': len(execution_log) if execution_log else 0
+                }
+            )
+            
+            return True
     
     async def fail_task(
         self,
@@ -279,54 +463,103 @@ class BlackBoard:
     ) -> bool:
         """Mark a task as failed"""
         
-        task = await self.get_task(task_id)
-        if not task:
-            return False
-        
-        # Update task
-        task.status = TaskStatus.FAILED
-        task.updated_at = datetime.now()
-        if error_messages:
-            task.error_messages.extend(error_messages)
-        
-        # Update expert instance
-        if task.assignment:
-            expert_instance = await self.get_expert_instance(task.assignment.expert_instance_id)
-            if expert_instance:
-                expert_instance.current_task_count -= 1
-                expert_instance.last_activity = datetime.now()
-                # Update performance metrics
-                if "failed_tasks" not in expert_instance.performance_metrics:
-                    expert_instance.performance_metrics["failed_tasks"] = 0
-                expert_instance.performance_metrics["failed_tasks"] += 1
-                await self._store_expert_instance(expert_instance)
-        
-        # Store task
-        await self._store_task(task)
-        
-        # Update state
-        current_status = TaskStatus.IN_PROGRESS if task.assignment else TaskStatus.ASSIGNED
-        await self._move_task_in_state(task_id, current_status, TaskStatus.FAILED)
-        
-        # Create event
-        await self._create_event(
-            task_id,
-            "task_failed",
-            {"failed_by": failed_by, "retry_possible": retry_possible},
-            failed_by
-        )
-        
-        # Send notifications
-        await self._notify_team_members(
-            task_id,
-            "task_failed",
-            f"Task failed: {task.title}",
-            f"Task has failed. Retry possible: {retry_possible}",
-            [failed_by]
-        )
-        
-        self.logger.warning(f"Failed task {task_id}")
-        return True
+        with self.performance_logger.time_operation(
+            "fail_task",
+            team_id=self.team_id,
+            task_id=task_id
+        ):
+            task = await self.get_task(task_id)
+            if not task:
+                self.logger.error(
+                    f"Cannot fail task {task_id}: task not found",
+                    extra={'task_id': task_id, 'team_id': self.team_id, 'user_id': failed_by}
+                )
+                return False
+            
+            # 计算执行时间
+            execution_time = 0.0
+            if task.assignment and task.assignment.started_at:
+                execution_time = (datetime.now() - task.assignment.started_at).total_seconds()
+            
+            # Update task
+            task.status = TaskStatus.FAILED
+            task.updated_at = datetime.now()
+            if error_messages:
+                task.error_messages.extend(error_messages)
+                self.logger.error(
+                    f"Task {task_id} failed with errors: {'; '.join(error_messages)}",
+                    extra={
+                        'task_id': task_id,
+                        'team_id': self.team_id,
+                        'error_count': len(error_messages),
+                        'user_id': failed_by
+                    }
+                )
+            
+            # Update expert instance
+            if task.assignment:
+                expert_instance = await self.get_expert_instance(task.assignment.expert_instance_id)
+                if expert_instance:
+                    expert_instance.current_task_count -= 1
+                    expert_instance.last_activity = datetime.now()
+                    # Update performance metrics
+                    if "failed_tasks" not in expert_instance.performance_metrics:
+                        expert_instance.performance_metrics["failed_tasks"] = 0
+                    expert_instance.performance_metrics["failed_tasks"] += 1
+                    await self._store_expert_instance(expert_instance)
+                    
+                    self.logger.warning(
+                        f"Expert {task.assignment.expert_instance_id} failed task",
+                        extra={
+                            'expert_instance_id': task.assignment.expert_instance_id,
+                            'failed_tasks': expert_instance.performance_metrics["failed_tasks"],
+                            'current_load': expert_instance.current_task_count
+                        }
+                    )
+            
+            # Store task
+            await self._store_task(task)
+            
+            # Update state
+            current_status = TaskStatus.IN_PROGRESS if task.assignment else TaskStatus.ASSIGNED
+            await self._move_task_in_state(task_id, current_status, TaskStatus.FAILED)
+            
+            # Create event
+            await self._create_event(
+                task_id,
+                "task_failed",
+                {
+                    "failed_by": failed_by, 
+                    "retry_possible": retry_possible,
+                    "execution_time": execution_time,
+                    "error_count": len(error_messages) if error_messages else 0
+                },
+                failed_by
+            )
+            
+            # Send notifications
+            await self._notify_team_members(
+                task_id,
+                "task_failed",
+                f"Task failed: {task.title}",
+                f"Task has failed. Retry possible: {retry_possible}",
+                [failed_by]
+            )
+            
+            self.logger.warning(
+                f"Failed task {task_id}",
+                extra={
+                    'task_id': task_id,
+                    'team_id': self.team_id,
+                    'expert_instance_id': task.assignment.expert_instance_id if task.assignment else None,
+                    'execution_time': execution_time,
+                    'retry_possible': retry_possible,
+                    'user_id': failed_by,
+                    'error_messages': error_messages or []
+                }
+            )
+            
+            return True
     
     # === Expert Instance Management ===
     
@@ -836,3 +1069,52 @@ class BlackBoard:
             "average_duration_trend": [45, 42, 40, 38, 35],
             "task_volume_trend": [10, 12, 15, 18, 20]
         } 
+
+    # === Redis Operation Methods with Logging ===
+    
+    async def _set_redis_value(self, key: str, value: str):
+        """Store value in Redis with logging"""
+        try:
+            self.logger.debug(f"Storing Redis key: {key}")
+            await self.redis_client.set(key, value)
+            self.logger.debug(f"Successfully stored Redis key: {key}")
+        except Exception as e:
+            self.logger.error(
+                f"Failed to store Redis key {key}: {str(e)}",
+                extra={'redis_key': key, 'team_id': self.team_id},
+                exc_info=True
+            )
+            raise
+    
+    async def _get_redis_value(self, key: str) -> Optional[str]:
+        """Get value from Redis with logging"""
+        try:
+            self.logger.debug(f"Retrieving Redis key: {key}")
+            value = await self.redis_client.get(key)
+            if value is None:
+                self.logger.debug(f"Redis key not found: {key}")
+            else:
+                self.logger.debug(f"Successfully retrieved Redis key: {key}")
+            return value
+        except Exception as e:
+            self.logger.error(
+                f"Failed to retrieve Redis key {key}: {str(e)}",
+                extra={'redis_key': key, 'team_id': self.team_id},
+                exc_info=True
+            )
+            raise
+    
+    async def _delete_redis_key(self, key: str):
+        """Delete key from Redis with logging"""
+        try:
+            self.logger.debug(f"Deleting Redis key: {key}")
+            result = await self.redis_client.delete(key)
+            self.logger.debug(f"Redis key deletion result: {result} for key: {key}")
+            return result
+        except Exception as e:
+            self.logger.error(
+                f"Failed to delete Redis key {key}: {str(e)}",
+                extra={'redis_key': key, 'team_id': self.team_id},
+                exc_info=True
+            )
+            raise 
