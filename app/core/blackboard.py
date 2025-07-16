@@ -1093,7 +1093,7 @@ class BlackBoard:
         """Get value from Redis with logging"""
         try:
             self.logger.debug(f"Retrieving Redis key: {key}")
-            value = await self.redis_client.get(key)
+            value = self.redis_client.get(key)
             if value is None:
                 self.logger.debug(f"Redis key not found: {key}")
             else:
@@ -1111,7 +1111,7 @@ class BlackBoard:
         """Delete key from Redis with logging"""
         try:
             self.logger.debug(f"Deleting Redis key: {key}")
-            result = await self.redis_client.delete(key)
+            result = self.redis_client.delete(key)
             self.logger.debug(f"Redis key deletion result: {result} for key: {key}")
             return result
         except Exception as e:
