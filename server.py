@@ -218,7 +218,7 @@ async def cleanup_system_components():
     try:
         # 关闭Redis连接
         from app.clients.redis_client import redis_client_instance
-        await redis_client_instance.close()
+        redis_client_instance.close()
         main_logger.info("✅ Redis connections closed")
         
     except Exception as e:
@@ -282,10 +282,12 @@ async def health_check():
         # 检查Redis连接
         from app.clients.redis_client import redis_client_instance
         redis_client = redis_client_instance.get_redis_client()
-        await redis_client.ping()
+        redis_client.ping()
         health_status["components"]["redis"] = "healthy"
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         health_status["components"]["redis"] = f"unhealthy: {str(e)}"
         health_status["status"] = "degraded"
         

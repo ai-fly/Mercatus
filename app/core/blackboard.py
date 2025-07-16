@@ -1076,8 +1076,11 @@ class BlackBoard:
         """Store value in Redis with logging"""
         try:
             self.logger.debug(f"Storing Redis key: {key}")
-            await self.redis_client.set(key, value)
-            self.logger.debug(f"Successfully stored Redis key: {key}")
+            result = self.redis_client.set(key, value)
+            if result:
+                self.logger.debug(f"Successfully stored Redis key: {key}")
+            else:
+                raise Exception(f"Failed to store Redis key: {key}")
         except Exception as e:
             self.logger.error(
                 f"Failed to store Redis key {key}: {str(e)}",

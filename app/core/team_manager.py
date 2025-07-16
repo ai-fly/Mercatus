@@ -91,7 +91,7 @@ class TeamManager:
             self.teams[team.team_id] = team
             
             # Create default expert instances
-            await self._create_default_experts(team.team_id)
+            await self._initialize_team_experts(team)
             
             self.logger.info(
                 f"Created team {team.team_id}: {team_name}",
@@ -284,11 +284,7 @@ class TeamManager:
             
             # Create actual expert object
             expert_class = self.expert_classes[expert_role]
-            expert_obj = expert_class(
-                name=instance_name,
-                description=f"{expert_role.value} expert instance",
-                index=current_count + 1
-            )
+            expert_obj = expert_class(index=current_count + 1)
             
             # Store in team
             team.expert_instances.append(instance)

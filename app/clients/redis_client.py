@@ -14,6 +14,9 @@ class RedisClient:
 
     def get_redis_client(self) -> Redis:
         return self.redis_client
+
+    def close(self):
+        self.redis_client.close()
     
 
 redis_client_instance = RedisClient()
