@@ -1,6 +1,23 @@
 from dataclasses import dataclass
+from typing import Optional, Dict, Any
 
-from app.types.output import TaskItem
+from app.types.output import AgentExecutorResultItem as TaskItem
+
+
+@dataclass
+class AppContext:
+    """Application context for configuration and shared state"""
+    config: Optional[Dict[str, Any]] = None
+    """Application configuration"""
+    
+    session_id: Optional[str] = None
+    """Current session identifier"""
+    
+    user_id: Optional[str] = None
+    """Current user identifier"""
+    
+    debug: bool = False
+    """Debug mode flag"""
 
 
 @dataclass

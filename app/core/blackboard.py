@@ -1,0 +1,838 @@
+import asyncio
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple, Type
+from uuid import uuid4
+
+from app.types.blackboard import (
+    BlackboardTask, TaskStatus, TaskPriority, ExpertRole, TeamRole,
+    ExpertInstance, TaskAssignment, Team, TeamMember, TeamConfiguration,
+    BlackboardState, TaskEvent, TaskNotification, CollaborationComment,
+    TaskFilter, TaskSearchCriteria, TaskDependency
+)
+from app.types.output import Platform, Region, ContentType
+from app.clients.redis_client import redis_client_instance
+from app.config import settings
+
+
+class BlackBoard:
+    """
+    Multi-tenant BlackBoard system for team collaboration and task management.
+    Provides shared visibility of all tasks across team members with assignment to expert instances.
+    """
+    
+    def __init__(self, team_id: str):
+        """Initialize BlackBoard for a specific team"""
+        self.team_id = team_id
+        self.redis_client = redis_client_instance.get_redis_client()
+        self.logger = logging.getLogger(f"BlackBoard-{team_id}")
+        
+        # Redis key prefixes
+        self.task_prefix = f"blackboard:{team_id}:task"
+        self.state_key = f"blackboard:{team_id}:state"
+        self.expert_prefix = f"blackboard:{team_id}:expert"
+        self.assignment_prefix = f"blackboard:{team_id}:assignment"
+        self.event_prefix = f"blackboard:{team_id}:event"
+        self.notification_prefix = f"blackboard:{team_id}:notification"
+        self.comment_prefix = f"blackboard:{team_id}:comment"
+    
+    # === Task Management Methods ===
+    
+    async def create_task(
+        self,
+        title: str,
+        description: str,
+        goal: str,
+        required_expert_role: ExpertRole,
+        creator_id: str,
+        priority: TaskPriority = TaskPriority.MEDIUM,
+        target_platforms: List[Platform] = None,
+        target_regions: List[Region] = None,
+        content_types: List[ContentType] = None,
+        due_date: Optional[datetime] = None,
+        dependencies: List[TaskDependency] = None,
+        metadata: Dict = None,
+        parent_task_id: Optional[str] = None
+    ) -> BlackboardTask:
+        """Create a new task and add it to the BlackBoard"""
+        
+        task = BlackboardTask(
+            team_id=self.team_id,
+            title=title,
+            description=description,
+            goal=goal,
+            required_expert_role=required_expert_role,
+            priority=priority,
+            target_platforms=target_platforms or [],
+            target_regions=target_regions or [],
+            content_types=content_types or [],
+            due_date=due_date,
+            dependencies=dependencies or [],
+            parent_task_id=parent_task_id
+        )
+        
+        if metadata:
+            task.metadata.context_data.update(metadata)
+        
+        # Store task in Redis
+        task_key = f"{self.task_prefix}:{task.task_id}"
+        await self._set_redis_value(task_key, task.model_dump_json())
+        
+        # Update state
+        await self._add_task_to_state(task.task_id, TaskStatus.PENDING)
+        
+        # Create event
+        await self._create_event(
+            task.task_id,
+            "task_created",
+            {"creator_id": creator_id, "priority": priority.value},
+            creator_id
+        )
+        
+        # Send notifications
+        await self._notify_team_members(
+            task.task_id,
+            "task_created",
+            f"New task created: {title}",
+            f"Task '{title}' requires {required_expert_role.value} expert",
+            [creator_id]
+        )
+        
+        self.logger.info(f"Created task {task.task_id}: {title}")
+        return task
+    
+    async def assign_task(
+        self, 
+        task_id: str, 
+        expert_instance_id: str, 
+        assigned_by: str,
+        estimated_duration: Optional[int] = None
+    ) -> bool:
+        """Assign a task to a specific expert instance"""
+        
+        # Get task and expert instance
+        task = await self.get_task(task_id)
+        if not task:
+            self.logger.error(f"Task {task_id} not found")
+            return False
+        
+        expert_instance = await self.get_expert_instance(expert_instance_id)
+        if not expert_instance:
+            self.logger.error(f"Expert instance {expert_instance_id} not found")
+            return False
+        
+        # Check if expert can handle the task
+        if expert_instance.expert_role != task.required_expert_role:
+            self.logger.error(f"Expert role mismatch: {expert_instance.expert_role} != {task.required_expert_role}")
+            return False
+        
+        # Check expert capacity
+        if expert_instance.current_task_count >= expert_instance.max_concurrent_tasks:
+            self.logger.warning(f"Expert instance {expert_instance_id} at capacity")
+            return False
+        
+        # Create assignment
+        assignment = TaskAssignment(
+            task_id=task_id,
+            expert_instance_id=expert_instance_id,
+            assigned_by=assigned_by,
+            estimated_duration=estimated_duration
+        )
+        
+        # Update task
+        task.assignment = assignment
+        task.status = TaskStatus.ASSIGNED
+        task.updated_at = datetime.now()
+        
+        # Update expert instance
+        expert_instance.current_task_count += 1
+        expert_instance.last_activity = datetime.now()
+        
+        # Store updates
+        await self._store_task(task)
+        await self._store_expert_instance(expert_instance)
+        
+        # Update state
+        await self._move_task_in_state(task_id, TaskStatus.PENDING, TaskStatus.ASSIGNED)
+        
+        # Create event
+        await self._create_event(
+            task_id,
+            "task_assigned",
+            {"expert_instance_id": expert_instance_id, "assigned_by": assigned_by},
+            assigned_by
+        )
+        
+        # Send notifications
+        await self._notify_team_members(
+            task_id,
+            "task_assigned",
+            f"Task assigned: {task.title}",
+            f"Task assigned to {expert_instance.instance_name}",
+            [assigned_by]
+        )
+        
+        self.logger.info(f"Assigned task {task_id} to expert {expert_instance_id}")
+        return True
+    
+    async def start_task(self, task_id: str, started_by: str) -> bool:
+        """Mark a task as started"""
+        
+        task = await self.get_task(task_id)
+        if not task or task.status != TaskStatus.ASSIGNED:
+            return False
+        
+        # Update task
+        task.status = TaskStatus.IN_PROGRESS
+        task.updated_at = datetime.now()
+        if task.assignment:
+            task.assignment.started_at = datetime.now()
+        
+        # Store task
+        await self._store_task(task)
+        
+        # Update state
+        await self._move_task_in_state(task_id, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS)
+        
+        # Create event
+        await self._create_event(
+            task_id,
+            "task_started",
+            {"started_by": started_by},
+            started_by
+        )
+        
+        self.logger.info(f"Started task {task_id}")
+        return True
+    
+    async def complete_task(
+        self,
+        task_id: str,
+        completed_by: str,
+        output_data: Dict = None,
+        execution_log: List[str] = None
+    ) -> bool:
+        """Mark a task as completed"""
+        
+        task = await self.get_task(task_id)
+        if not task or task.status != TaskStatus.IN_PROGRESS:
+            return False
+        
+        # Update task
+        task.status = TaskStatus.COMPLETED
+        task.updated_at = datetime.now()
+        if output_data:
+            task.output_data.update(output_data)
+        if execution_log:
+            task.execution_log.extend(execution_log)
+        
+        if task.assignment:
+            task.assignment.completed_at = datetime.now()
+            if task.assignment.started_at:
+                duration = (task.assignment.completed_at - task.assignment.started_at).total_seconds() / 60
+                task.assignment.actual_duration = int(duration)
+        
+        # Update expert instance
+        if task.assignment:
+            expert_instance = await self.get_expert_instance(task.assignment.expert_instance_id)
+            if expert_instance:
+                expert_instance.current_task_count -= 1
+                expert_instance.last_activity = datetime.now()
+                # Update performance metrics
+                if "completed_tasks" not in expert_instance.performance_metrics:
+                    expert_instance.performance_metrics["completed_tasks"] = 0
+                expert_instance.performance_metrics["completed_tasks"] += 1
+                await self._store_expert_instance(expert_instance)
+        
+        # Store task
+        await self._store_task(task)
+        
+        # Update state
+        await self._move_task_in_state(task_id, TaskStatus.IN_PROGRESS, TaskStatus.COMPLETED)
+        
+        # Create event
+        await self._create_event(
+            task_id,
+            "task_completed",
+            {"completed_by": completed_by},
+            completed_by
+        )
+        
+        # Send notifications
+        await self._notify_team_members(
+            task_id,
+            "task_completed",
+            f"Task completed: {task.title}",
+            f"Task has been successfully completed",
+            [completed_by]
+        )
+        
+        self.logger.info(f"Completed task {task_id}")
+        return True
+    
+    async def fail_task(
+        self,
+        task_id: str,
+        failed_by: str,
+        error_messages: List[str] = None,
+        retry_possible: bool = True
+    ) -> bool:
+        """Mark a task as failed"""
+        
+        task = await self.get_task(task_id)
+        if not task:
+            return False
+        
+        # Update task
+        task.status = TaskStatus.FAILED
+        task.updated_at = datetime.now()
+        if error_messages:
+            task.error_messages.extend(error_messages)
+        
+        # Update expert instance
+        if task.assignment:
+            expert_instance = await self.get_expert_instance(task.assignment.expert_instance_id)
+            if expert_instance:
+                expert_instance.current_task_count -= 1
+                expert_instance.last_activity = datetime.now()
+                # Update performance metrics
+                if "failed_tasks" not in expert_instance.performance_metrics:
+                    expert_instance.performance_metrics["failed_tasks"] = 0
+                expert_instance.performance_metrics["failed_tasks"] += 1
+                await self._store_expert_instance(expert_instance)
+        
+        # Store task
+        await self._store_task(task)
+        
+        # Update state
+        current_status = TaskStatus.IN_PROGRESS if task.assignment else TaskStatus.ASSIGNED
+        await self._move_task_in_state(task_id, current_status, TaskStatus.FAILED)
+        
+        # Create event
+        await self._create_event(
+            task_id,
+            "task_failed",
+            {"failed_by": failed_by, "retry_possible": retry_possible},
+            failed_by
+        )
+        
+        # Send notifications
+        await self._notify_team_members(
+            task_id,
+            "task_failed",
+            f"Task failed: {task.title}",
+            f"Task has failed. Retry possible: {retry_possible}",
+            [failed_by]
+        )
+        
+        self.logger.warning(f"Failed task {task_id}")
+        return True
+    
+    # === Expert Instance Management ===
+    
+    async def register_expert_instance(
+        self,
+        expert_role: ExpertRole,
+        instance_name: str,
+        max_concurrent_tasks: int = 3,
+        specializations: List[str] = None
+    ) -> ExpertInstance:
+        """Register a new expert instance"""
+        
+        instance = ExpertInstance(
+            instance_id=str(uuid4()),
+            expert_role=expert_role,
+            instance_name=instance_name,
+            status="active",
+            max_concurrent_tasks=max_concurrent_tasks,
+            specializations=specializations or []
+        )
+        
+        await self._store_expert_instance(instance)
+        
+        self.logger.info(f"Registered expert instance {instance.instance_id}: {instance_name}")
+        return instance
+    
+    async def get_available_experts(self, required_role: ExpertRole) -> List[ExpertInstance]:
+        """Get available expert instances for a specific role"""
+        
+        all_experts = await self._get_all_expert_instances()
+        available_experts = []
+        
+        for expert in all_experts:
+            if (expert.expert_role == required_role and
+                expert.status == "active" and
+                expert.current_task_count < expert.max_concurrent_tasks):
+                available_experts.append(expert)
+        
+        # Sort by current load (ascending)
+        available_experts.sort(key=lambda x: x.current_task_count)
+        return available_experts
+    
+    # === Task Query and Search Methods ===
+    
+    async def get_task(self, task_id: str) -> Optional[BlackboardTask]:
+        """Get a specific task by ID"""
+        
+        task_key = f"{self.task_prefix}:{task_id}"
+        task_data = await self._get_redis_value(task_key)
+        
+        if task_data:
+            return BlackboardTask.model_validate_json(task_data)
+        return None
+    
+    async def search_tasks(self, criteria: TaskSearchCriteria) -> Tuple[List[BlackboardTask], int]:
+        """Search tasks based on criteria"""
+        
+        all_tasks = await self._get_all_tasks()
+        filtered_tasks = []
+        
+        for task in all_tasks:
+            if self._matches_filter(task, criteria.filters):
+                if criteria.query:
+                    # Simple text search
+                    search_text = f"{task.title} {task.description} {task.goal}".lower()
+                    if criteria.query.lower() not in search_text:
+                        continue
+                filtered_tasks.append(task)
+        
+        # Sort tasks
+        if criteria.sort_by == "created_at":
+            filtered_tasks.sort(key=lambda x: x.created_at, reverse=(criteria.sort_order == "desc"))
+        elif criteria.sort_by == "priority":
+            priority_order = {"urgent": 4, "high": 3, "medium": 2, "low": 1}
+            filtered_tasks.sort(
+                key=lambda x: priority_order.get(x.priority.value, 0),
+                reverse=(criteria.sort_order == "desc")
+            )
+        elif criteria.sort_by == "status":
+            filtered_tasks.sort(key=lambda x: x.status.value, reverse=(criteria.sort_order == "desc"))
+        
+        total_count = len(filtered_tasks)
+        
+        # Apply pagination
+        start = criteria.offset
+        end = start + criteria.limit
+        paginated_tasks = filtered_tasks[start:end]
+        
+        return paginated_tasks, total_count
+    
+    async def get_tasks_by_status(self, status: TaskStatus) -> List[BlackboardTask]:
+        """Get all tasks with a specific status"""
+        
+        state = await self._get_blackboard_state()
+        if not state:
+            return []
+        
+        status_field_map = {
+            TaskStatus.PENDING: "pending_tasks",
+            TaskStatus.ASSIGNED: "assigned_tasks",
+            TaskStatus.IN_PROGRESS: "in_progress_tasks",
+            TaskStatus.COMPLETED: "completed_tasks",
+            TaskStatus.FAILED: "failed_tasks"
+        }
+        
+        task_ids = getattr(state, status_field_map[status], [])
+        tasks = []
+        
+        for task_id in task_ids:
+            task = await self.get_task(task_id)
+            if task:
+                tasks.append(task)
+        
+        return tasks
+    
+    async def get_tasks_for_expert(self, expert_instance_id: str) -> List[BlackboardTask]:
+        """Get all tasks assigned to a specific expert instance"""
+        
+        all_tasks = await self._get_all_tasks()
+        expert_tasks = []
+        
+        for task in all_tasks:
+            if (task.assignment and 
+                task.assignment.expert_instance_id == expert_instance_id):
+                expert_tasks.append(task)
+        
+        return expert_tasks
+    
+    # === Team and State Management ===
+    
+    async def get_blackboard_state(self) -> BlackboardState:
+        """Get current BlackBoard state"""
+        
+        state = await self._get_blackboard_state()
+        if not state:
+            # Create initial state
+            state = BlackboardState(team_id=self.team_id)
+            await self._store_blackboard_state(state)
+        
+        # Update statistics
+        await self._update_state_statistics(state)
+        return state
+    
+    async def get_team_performance_metrics(self) -> Dict:
+        """Get team performance metrics"""
+        
+        state = await self.get_blackboard_state()
+        all_tasks = await self._get_all_tasks()
+        
+        metrics = {
+            "total_tasks": len(all_tasks),
+            "pending_tasks": len(state.pending_tasks),
+            "in_progress_tasks": len(state.in_progress_tasks),
+            "completed_tasks": len(state.completed_tasks),
+            "failed_tasks": len(state.failed_tasks),
+            "completion_rate": state.completion_rate,
+            "average_duration": state.average_duration,
+            "expert_utilization": await self._calculate_expert_utilization(),
+            "task_distribution": await self._calculate_task_distribution(),
+            "performance_trends": await self._calculate_performance_trends()
+        }
+        
+        return metrics
+    
+    # === Notification and Communication ===
+    
+    async def add_comment(
+        self,
+        task_id: str,
+        author_id: str,
+        content: str,
+        comment_type: str = "note",
+        parent_comment_id: Optional[str] = None
+    ) -> CollaborationComment:
+        """Add a comment to a task"""
+        
+        comment = CollaborationComment(
+            task_id=task_id,
+            author_id=author_id,
+            content=content,
+            comment_type=comment_type,
+            parent_comment_id=parent_comment_id
+        )
+        
+        comment_key = f"{self.comment_prefix}:{task_id}:{comment.comment_id}"
+        await self._set_redis_value(comment_key, comment.model_dump_json())
+        
+        # Notify team members
+        await self._notify_team_members(
+            task_id,
+            "comment_added",
+            f"New comment on task",
+            f"Comment: {content[:50]}...",
+            [author_id]
+        )
+        
+        return comment
+    
+    async def get_task_comments(self, task_id: str) -> List[CollaborationComment]:
+        """Get all comments for a task"""
+        
+        pattern = f"{self.comment_prefix}:{task_id}:*"
+        comment_keys = await self._get_keys_by_pattern(pattern)
+        
+        comments = []
+        for key in comment_keys:
+            comment_data = await self._get_redis_value(key)
+            if comment_data:
+                comment = CollaborationComment.model_validate_json(comment_data)
+                comments.append(comment)
+        
+        # Sort by creation time
+        comments.sort(key=lambda x: x.created_at)
+        return comments
+    
+    # === Auto-assignment and Optimization ===
+    
+    async def auto_assign_task(self, task_id: str) -> bool:
+        """Automatically assign a task to the best available expert"""
+        
+        task = await self.get_task(task_id)
+        if not task or task.status != TaskStatus.PENDING:
+            return False
+        
+        # Get available experts
+        available_experts = await self.get_available_experts(task.required_expert_role)
+        if not available_experts:
+            self.logger.warning(f"No available experts for task {task_id}")
+            return False
+        
+        # Select best expert (lowest current load, highest performance)
+        best_expert = self._select_best_expert(available_experts, task)
+        
+        # Assign task
+        return await self.assign_task(task_id, best_expert.instance_id, "system")
+    
+    def _select_best_expert(self, experts: List[ExpertInstance], task: BlackboardTask) -> ExpertInstance:
+        """Select the best expert for a task based on load and performance"""
+        
+        def expert_score(expert: ExpertInstance) -> float:
+            # Base score (lower current load is better)
+            load_score = 1.0 - (expert.current_task_count / expert.max_concurrent_tasks)
+            
+            # Performance score
+            completed_tasks = expert.performance_metrics.get("completed_tasks", 0)
+            failed_tasks = expert.performance_metrics.get("failed_tasks", 0)
+            total_tasks = completed_tasks + failed_tasks
+            
+            if total_tasks > 0:
+                success_rate = completed_tasks / total_tasks
+            else:
+                success_rate = 0.5  # Neutral for new experts
+            
+            # Specialization bonus
+            specialization_bonus = 0.0
+            if task.metadata and task.metadata.required_skills:
+                matching_skills = set(expert.specializations) & set(task.metadata.required_skills)
+                specialization_bonus = len(matching_skills) * 0.1
+            
+            return load_score * 0.6 + success_rate * 0.3 + specialization_bonus
+        
+        # Select expert with highest score
+        return max(experts, key=expert_score)
+    
+    # === Helper Methods ===
+    
+    async def _store_task(self, task: BlackboardTask):
+        """Store task in Redis"""
+        task_key = f"{self.task_prefix}:{task.task_id}"
+        await self._set_redis_value(task_key, task.model_dump_json())
+    
+    async def _store_expert_instance(self, expert: ExpertInstance):
+        """Store expert instance in Redis"""
+        expert_key = f"{self.expert_prefix}:{expert.instance_id}"
+        await self._set_redis_value(expert_key, expert.model_dump_json())
+    
+    async def _get_all_tasks(self) -> List[BlackboardTask]:
+        """Get all tasks for the team"""
+        pattern = f"{self.task_prefix}:*"
+        task_keys = await self._get_keys_by_pattern(pattern)
+        
+        tasks = []
+        for key in task_keys:
+            task_data = await self._get_redis_value(key)
+            if task_data:
+                task = BlackboardTask.model_validate_json(task_data)
+                tasks.append(task)
+        
+        return tasks
+    
+    async def _get_all_expert_instances(self) -> List[ExpertInstance]:
+        """Get all expert instances for the team"""
+        pattern = f"{self.expert_prefix}:*"
+        expert_keys = await self._get_keys_by_pattern(pattern)
+        
+        experts = []
+        for key in expert_keys:
+            expert_data = await self._get_redis_value(key)
+            if expert_data:
+                expert = ExpertInstance.model_validate_json(expert_data)
+                experts.append(expert)
+        
+        return experts
+    
+    async def get_expert_instance(self, instance_id: str) -> Optional[ExpertInstance]:
+        """Get a specific expert instance"""
+        expert_key = f"{self.expert_prefix}:{instance_id}"
+        expert_data = await self._get_redis_value(expert_key)
+        
+        if expert_data:
+            return ExpertInstance.model_validate_json(expert_data)
+        return None
+    
+    def _matches_filter(self, task: BlackboardTask, filters: TaskFilter) -> bool:
+        """Check if task matches filter criteria"""
+        
+        if filters.status and task.status not in filters.status:
+            return False
+        
+        if filters.priority and task.priority not in filters.priority:
+            return False
+        
+        if filters.expert_role and task.required_expert_role not in filters.expert_role:
+            return False
+        
+        if filters.assigned_to and task.assignment:
+            if task.assignment.expert_instance_id not in filters.assigned_to:
+                return False
+        elif filters.assigned_to:
+            return False
+        
+        if filters.platforms:
+            if not any(platform in task.target_platforms for platform in filters.platforms):
+                return False
+        
+        if filters.regions:
+            if not any(region in task.target_regions for region in filters.regions):
+                return False
+        
+        if filters.tags and task.metadata:
+            if not any(tag in task.metadata.tags for tag in filters.tags):
+                return False
+        
+        if filters.date_range:
+            start_date = filters.date_range.get("start")
+            end_date = filters.date_range.get("end")
+            
+            if start_date and task.created_at < start_date:
+                return False
+            
+            if end_date and task.created_at > end_date:
+                return False
+        
+        return True
+    
+    # === Redis Helper Methods ===
+    
+    async def _set_redis_value(self, key: str, value: str):
+        """Set value in Redis"""
+        self.redis_client.set(key, value)
+    
+    async def _get_redis_value(self, key: str) -> Optional[str]:
+        """Get value from Redis"""
+        return self.redis_client.get(key)
+    
+    async def _get_keys_by_pattern(self, pattern: str) -> List[str]:
+        """Get keys matching pattern"""
+        return self.redis_client.keys(pattern)
+    
+    async def _get_blackboard_state(self) -> Optional[BlackboardState]:
+        """Get BlackBoard state from Redis"""
+        state_data = await self._get_redis_value(self.state_key)
+        if state_data:
+            return BlackboardState.model_validate_json(state_data)
+        return None
+    
+    async def _store_blackboard_state(self, state: BlackboardState):
+        """Store BlackBoard state in Redis"""
+        await self._set_redis_value(self.state_key, state.model_dump_json())
+    
+    async def _add_task_to_state(self, task_id: str, status: TaskStatus):
+        """Add task to appropriate status list in state"""
+        state = await self._get_blackboard_state() or BlackboardState(team_id=self.team_id)
+        
+        if status == TaskStatus.PENDING:
+            state.pending_tasks.append(task_id)
+        elif status == TaskStatus.ASSIGNED:
+            state.assigned_tasks.append(task_id)
+        elif status == TaskStatus.IN_PROGRESS:
+            state.in_progress_tasks.append(task_id)
+        elif status == TaskStatus.COMPLETED:
+            state.completed_tasks.append(task_id)
+        elif status == TaskStatus.FAILED:
+            state.failed_tasks.append(task_id)
+        
+        state.total_tasks = len(state.pending_tasks + state.assigned_tasks + 
+                                state.in_progress_tasks + state.completed_tasks + 
+                                state.failed_tasks)
+        state.last_updated = datetime.now()
+        
+        await self._store_blackboard_state(state)
+    
+    async def _move_task_in_state(self, task_id: str, from_status: TaskStatus, to_status: TaskStatus):
+        """Move task between status lists in state"""
+        state = await self._get_blackboard_state()
+        if not state:
+            return
+        
+        # Remove from old status
+        if from_status == TaskStatus.PENDING and task_id in state.pending_tasks:
+            state.pending_tasks.remove(task_id)
+        elif from_status == TaskStatus.ASSIGNED and task_id in state.assigned_tasks:
+            state.assigned_tasks.remove(task_id)
+        elif from_status == TaskStatus.IN_PROGRESS and task_id in state.in_progress_tasks:
+            state.in_progress_tasks.remove(task_id)
+        
+        # Add to new status
+        if to_status == TaskStatus.ASSIGNED:
+            state.assigned_tasks.append(task_id)
+        elif to_status == TaskStatus.IN_PROGRESS:
+            state.in_progress_tasks.append(task_id)
+        elif to_status == TaskStatus.COMPLETED:
+            state.completed_tasks.append(task_id)
+        elif to_status == TaskStatus.FAILED:
+            state.failed_tasks.append(task_id)
+        
+        state.last_updated = datetime.now()
+        await self._store_blackboard_state(state)
+    
+    async def _create_event(self, task_id: str, event_type: str, event_data: Dict, triggered_by: str):
+        """Create a task event"""
+        event = TaskEvent(
+            task_id=task_id,
+            event_type=event_type,
+            event_data=event_data,
+            triggered_by=triggered_by
+        )
+        
+        event_key = f"{self.event_prefix}:{task_id}:{event.event_id}"
+        await self._set_redis_value(event_key, event.model_dump_json())
+    
+    async def _notify_team_members(
+        self,
+        task_id: str,
+        notification_type: str,
+        title: str,
+        message: str,
+        exclude_users: List[str] = None
+    ):
+        """Send notifications to team members"""
+        # This would integrate with the actual notification system
+        # For now, just log the notification
+        self.logger.info(f"Notification: {title} - {message}")
+    
+    async def _update_state_statistics(self, state: BlackboardState):
+        """Update statistical information in state"""
+        total_completed = len(state.completed_tasks)
+        total_tasks = state.total_tasks
+        
+        if total_tasks > 0:
+            state.completion_rate = total_completed / total_tasks
+        else:
+            state.completion_rate = 0.0
+        
+        # Calculate average duration from completed tasks
+        completed_tasks = await self.get_tasks_by_status(TaskStatus.COMPLETED)
+        durations = []
+        
+        for task in completed_tasks:
+            if task.assignment and task.assignment.actual_duration:
+                durations.append(task.assignment.actual_duration)
+        
+        if durations:
+            state.average_duration = sum(durations) / len(durations)
+        else:
+            state.average_duration = 0.0
+        
+        await self._store_blackboard_state(state)
+    
+    async def _calculate_expert_utilization(self) -> Dict[str, float]:
+        """Calculate utilization rate for each expert instance"""
+        experts = await self._get_all_expert_instances()
+        utilization = {}
+        
+        for expert in experts:
+            utilization_rate = expert.current_task_count / expert.max_concurrent_tasks
+            utilization[expert.instance_id] = utilization_rate
+        
+        return utilization
+    
+    async def _calculate_task_distribution(self) -> Dict[str, int]:
+        """Calculate task distribution by expert role"""
+        all_tasks = await self._get_all_tasks()
+        distribution = {role.value: 0 for role in ExpertRole}
+        
+        for task in all_tasks:
+            distribution[task.required_expert_role.value] += 1
+        
+        return distribution
+    
+    async def _calculate_performance_trends(self) -> Dict[str, List[float]]:
+        """Calculate performance trends over time"""
+        # This would calculate trends based on historical data
+        # For now, return placeholder data
+        return {
+            "completion_rate_trend": [0.8, 0.85, 0.9, 0.88, 0.92],
+            "average_duration_trend": [45, 42, 40, 38, 35],
+            "task_volume_trend": [10, 12, 15, 18, 20]
+        } 

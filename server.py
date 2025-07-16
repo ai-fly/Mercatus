@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 import uvicorn
 
+from app.controllers import blackboard_controller
+
 app = FastAPI()
+app.include_router(blackboard_controller.router)
 
 
 

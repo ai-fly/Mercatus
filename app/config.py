@@ -1,6 +1,7 @@
 import os
 from typing import Optional, List, Dict, Any
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, validator
+from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 from enum import Enum
 

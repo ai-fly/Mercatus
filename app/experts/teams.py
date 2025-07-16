@@ -53,21 +53,17 @@ class Blackboard():
     def build_key(self, expert_name: str, stage: BlackboardStage) -> str:
         return f"BLACKBOARD:{self.team_id}:{stage.value}:{expert_name}"
     
-class TeamManager:
-    """
-    Team manager maintains the team and the blackboard.
-    """
+class Team:
 
     def __init__(self, team_goal: TeamGoal):
         self.team_goal = team_goal
         self.init_experts()
         self.blackboard = Blackboard(f"team_{uuid.uuid4()}")
 
-    def start(self):    
+    def start(self):
         pass
 
         
-
     def init_experts(self):
         self.experts = {}
         for member in self.team_goal.team_members:

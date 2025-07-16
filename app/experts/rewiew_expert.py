@@ -7,9 +7,9 @@ from app.agents.planner import create_planner_node
 from app.experts.expert import ExpertBase, ExpertTask
 from app.config import settings
 from app.experts.prompts.review_prompt import (
-    REVIEW_PLANNER_SYSTEM_PROMPT, REVIEW_PLANNER_TASK_PROMPT,
-    REVIEW_EXECUTOR_SYSTEM_PROMPT, REVIEW_EXECUTOR_TASK_PROMPT,
-    REVIEW_EVALUATOR_SYSTEM_PROMPT, REVIEW_EVALUATOR_TASK_PROMPT
+    HENRY_PLANNER_SYSTEM_PROMPT, HENRY_PLANNER_TASK_PROMPT,
+    HENRY_EXECUTOR_SYSTEM_PROMPT, HENRY_EXECUTOR_TASK_PROMPT,
+    HENRY_EVALUATOR_SYSTEM_PROMPT, HENRY_EVALUATOR_TASK_PROMPT
 )
 from app.types.output import (
     ReviewPlannerResult, ReviewEvaluatorResult, ReviewExecutorResult,
@@ -297,7 +297,7 @@ class ReviewExpert(ExpertBase):
         """Execute content review task"""
         try:
             # 1. 制定内容审查计划
-            planner_task_prompt = REVIEW_PLANNER_TASK_PROMPT.format(
+            planner_task_prompt = HENRY_PLANNER_TASK_PROMPT.format(
                 task_name=task.task_name,
                 task_description=task.task_description,
                 task_goal=task.task_goal,
@@ -329,7 +329,7 @@ class ReviewExpert(ExpertBase):
                     for task in unfinished_tasks
                 ])
 
-                executor_task_prompt = REVIEW_EXECUTOR_TASK_PROMPT.format(
+                executor_task_prompt = HENRY_EXECUTOR_TASK_PROMPT.format(
                     total_tasks=total_tasks,
                     unfinished_tasks=unfinished_tasks_prompt
                 )
@@ -346,7 +346,7 @@ class ReviewExpert(ExpertBase):
                     for item in executor_result.items
                 ])
                 
-                evaluator_task_prompt = REVIEW_EVALUATOR_TASK_PROMPT.format(
+                evaluator_task_prompt = HENRY_EVALUATOR_TASK_PROMPT.format(
                     tasks=total_tasks,
                     results=executor_results_prompt
                 )
@@ -391,9 +391,9 @@ class ReviewExpert(ExpertBase):
 
     def create_agents(self):
         """Create agent nodes"""
-        self.planner_agent = create_planner_node(ReviewPlannerResult, REVIEW_PLANNER_SYSTEM_PROMPT)
-        self.executor_agent = create_executor_node(ReviewExecutorResult, REVIEW_EXECUTOR_SYSTEM_PROMPT)
-        self.evaluator_agent = create_evaluator_node(ReviewEvaluatorResult, REVIEW_EVALUATOR_SYSTEM_PROMPT)
+        self.planner_agent = create_planner_node(ReviewPlannerResult, HENRY_PLANNER_SYSTEM_PROMPT)
+        self.executor_agent = create_executor_node(ReviewExecutorResult, HENRY_EXECUTOR_SYSTEM_PROMPT)
+        self.evaluator_agent = create_evaluator_node(ReviewEvaluatorResult, HENRY_EVALUATOR_SYSTEM_PROMPT)
 
     def check_platform_compliance(self, content: str, platform: Platform) -> PlatformComplianceResult:
         """检查平台合规性"""

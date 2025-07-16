@@ -10,7 +10,7 @@ from app.experts.prompts.content_prompt import (
     MONICA_EVALUATOR_SYSTEM_PROMPT, MONICA_EVALUATOR_TASK_PROMPT
 )
 from app.types.output import (
-    MonicaPlannerResult, MonicaEvaluatorResult, MonicaExecutorResult,
+    ContentPlannerResult, ContentEvaluatorResult, ContentExecutorResult,
     Platform, MarketingTechnique, PlatformContent
 )
 from typing import List, Dict, Any
@@ -192,7 +192,7 @@ class ContentExpert(ExpertBase):
                 target_audience=getattr(task, 'target_audience', '')
             )
             
-            plan_result: MonicaPlannerResult = await self.planner_agent.ainvoke(
+            plan_result: ContentPlannerResult = await self.planner_agent.ainvoke(
                 messages=[{"role": "user", "content": planner_task_prompt}]
             )
             
@@ -204,7 +204,7 @@ class ContentExpert(ExpertBase):
                 for task in plan_result.tasks
             ])
 
-            unfinished_tasks: List[MonicaEvaluatorResult] = []
+            unfinished_tasks: List[ContentEvaluatorResult] = []
             
             for retry_count in range(self.retries):
                 logging.info(f"Monica execution attempt {retry_count + 1}/{self.retries}")
@@ -219,7 +219,7 @@ class ContentExpert(ExpertBase):
                     unfinished_tasks=unfinished_tasks_prompt
                 )
                 
-                executor_result: MonicaExecutorResult = await self.executor_agent.ainvoke(
+                executor_result: ContentExecutorResult = await self.executor_agent.ainvoke(
                     messages=[{"role": "user", "content": executor_task_prompt}]
                 )
                 
@@ -236,7 +236,7 @@ class ContentExpert(ExpertBase):
                     results=executor_results_prompt
                 )
                 
-                evaluator_result: MonicaEvaluatorResult = await self.evaluator_agent.ainvoke(
+                evaluator_result: ContentEvaluatorResult = await self.evaluator_agent.ainvoke(
                     messages=[{"role": "user", "content": evaluator_task_prompt}]
                 )
 
@@ -276,9 +276,9 @@ class ContentExpert(ExpertBase):
 
     def create_agents(self):
         """Create agent nodes"""
-        self.planner_agent = create_planner_node(MonicaPlannerResult, MONICA_PLANNER_SYSTEM_PROMPT)
-        self.executor_agent = create_executor_node(MonicaExecutorResult, MONICA_EXECUTOR_SYSTEM_PROMPT)
-        self.evaluator_agent = create_evaluator_node(MonicaEvaluatorResult, MONICA_EVALUATOR_SYSTEM_PROMPT)
+        self.planner_agent = create_planner_node(ContentPlannerResult, MONICA_PLANNER_SYSTEM_PROMPT)
+        self.executor_agent = create_executor_node(ContentExecutorResult, MONICA_EXECUTOR_SYSTEM_PROMPT)
+        self.evaluator_agent = create_evaluator_node(ContentEvaluatorResult, MONICA_EVALUATOR_SYSTEM_PROMPT)
 
     def get_marketing_techniques_for_platform(self, platform: Platform) -> List[MarketingTechnique]:
         """Get marketing techniques suitable for specific platform"""
