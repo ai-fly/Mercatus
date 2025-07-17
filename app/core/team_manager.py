@@ -34,6 +34,7 @@ class TeamManager:
         self.teams: Dict[str, Team] = {}
         self.blackboards: Dict[str, BlackBoard] = {}
         self.expert_instances: Dict[str, Dict[str, ExpertBase]] = {}  # team_id -> instance_id -> expert
+        self.monitoring_services: Dict[str, 'ContinuousMonitoringService'] = {}  # team_id -> monitoring service
         
         # Expert class mapping
         self.expert_classes = {
@@ -92,6 +93,9 @@ class TeamManager:
             
             # Create default expert instances
             await self._initialize_team_experts(team)
+            
+            # Start automatic monitoring and workflow system
+            await self._start_auto_workflow_system(team)
             
             self.logger.info(
                 f"Created team {team.team_id}: {team_name}",
@@ -718,6 +722,154 @@ class TeamManager:
             "timestamp": datetime.now()
         }
     
+    # === Monitoring Service Management ===
+    
+    def get_monitoring_service(self, team_id: str) -> Optional['ContinuousMonitoringService']:
+        """Get monitoring service for a team"""
+        return self.monitoring_services.get(team_id)
+    
+    async def stop_team_monitoring(self, team_id: str) -> bool:
+        """Stop monitoring service for a team"""
+        
+        monitoring_service = self.monitoring_services.get(team_id)
+        if not monitoring_service:
+            return False
+        
+        try:
+            await monitoring_service.stop_monitoring()
+            del self.monitoring_services[team_id]
+            
+            self.logger.info(
+                f"Stopped monitoring service for team {team_id}",
+                extra={
+                    'team_id': team_id,
+                    'action': 'monitoring_stopped'
+                }
+            )
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(
+                f"Error stopping monitoring for team {team_id}: {str(e)}",
+                extra={'team_id': team_id, 'error': str(e)},
+                exc_info=True
+            )
+            return False
+    
+    async def get_team_workflow_status(self, team_id: str) -> Dict:
+        """Get comprehensive workflow status for a team"""
+        
+        monitoring_service = self.monitoring_services.get(team_id)
+        if not monitoring_service:
+            return {
+                "status": "no_monitoring",
+                "message": "Monitoring service not found for this team"
+            }
+        
+        try:
+            # Get monitoring dashboard
+            dashboard = await monitoring_service.get_monitoring_dashboard()
+            
+            # Get active workflows
+            workflows = await monitoring_service.workflow_engine.list_workflows()
+            
+            # Get dependency status
+            dependency_status = await monitoring_service.dependency_manager.get_dependency_status()
+            
+            return {
+                "status": "active",
+                "team_id": team_id,
+                "monitoring_dashboard": dashboard,
+                "workflows": workflows,
+                "dependency_status": dependency_status,
+                "last_update": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(
+                f"Error getting workflow status for team {team_id}: {str(e)}",
+                extra={'team_id': team_id, 'error': str(e)},
+                exc_info=True
+            )
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+    
+    async def create_auto_marketing_workflow(
+        self,
+        team_id: str,
+        project_name: str,
+        project_description: str,
+        target_platforms: List = None,
+        target_regions: List = None,
+        content_types: List = None,
+        creator_id: str = "system"
+    ) -> Dict:
+        """Create and start an automated marketing workflow"""
+        
+        monitoring_service = self.monitoring_services.get(team_id)
+        if not monitoring_service:
+            return {
+                "status": "error",
+                "message": "Monitoring service not found for this team"
+            }
+        
+        try:
+            # Create workflow through the workflow engine
+            workflow = await monitoring_service.workflow_engine.create_marketing_workflow(
+                project_name=project_name,
+                project_description=project_description,
+                target_platforms=target_platforms or [],
+                target_regions=target_regions or [],
+                content_types=content_types or [],
+                creator_id=creator_id
+            )
+            
+            # Start the workflow
+            workflow_started = await monitoring_service.workflow_engine.start_workflow(workflow.workflow_id)
+            
+            if workflow_started:
+                self.logger.info(
+                    f"Auto marketing workflow created and started for team {team_id}",
+                    extra={
+                        'team_id': team_id,
+                        'workflow_id': workflow.workflow_id,
+                        'project_name': project_name,
+                        'node_count': len(workflow.nodes),
+                        'action': 'auto_marketing_workflow_created'
+                    }
+                )
+                
+                return {
+                    "status": "success",
+                    "workflow_id": workflow.workflow_id,
+                    "workflow_name": workflow.workflow_name,
+                    "nodes": len(workflow.nodes),
+                    "message": f"Marketing workflow '{project_name}' created and started successfully"
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": "Failed to start workflow"
+                }
+            
+        except Exception as e:
+            self.logger.error(
+                f"Error creating auto marketing workflow for team {team_id}: {str(e)}",
+                extra={
+                    'team_id': team_id,
+                    'project_name': project_name,
+                    'error': str(e)
+                },
+                exc_info=True
+            )
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+    
     # === Helper Methods ===
     
     async def _initialize_team_experts(self, team: Team):
@@ -748,6 +900,93 @@ class TeamManager:
                 ExpertRole.EVALUATOR,
                 f"Henry {i+1}",
                 max_concurrent_tasks=3
+            )
+    
+    async def _start_auto_workflow_system(self, team: Team):
+        """Start automatic workflow system for a new team"""
+        
+        try:
+            # Import here to avoid circular imports
+            from app.core.continuous_monitor import ContinuousMonitoringService
+            from app.core.workflow_engine import WorkflowEngine
+            
+            self.logger.info(
+                f"Starting auto workflow system for team {team.team_id}",
+                extra={
+                    'team_id': team.team_id,
+                    'team_name': team.team_name,
+                    'action': 'auto_workflow_system_start'
+                }
+            )
+            
+            # Create and start monitoring service
+            monitoring_service = ContinuousMonitoringService(team.team_id)
+            self.monitoring_services[team.team_id] = monitoring_service
+            
+            # Start monitoring service
+            await monitoring_service.start_monitoring()
+            
+            # Create a welcome/demo workflow to showcase the system
+            await self._create_demo_workflow(team.team_id, team.owner_id)
+            
+            self.logger.info(
+                f"Auto workflow system started for team {team.team_id}",
+                extra={
+                    'team_id': team.team_id,
+                    'monitoring_started': True,
+                    'demo_workflow_created': True,
+                    'action': 'auto_workflow_system_started'
+                }
+            )
+            
+        except Exception as e:
+            self.logger.error(
+                f"Error starting auto workflow system for team {team.team_id}: {str(e)}",
+                extra={
+                    'team_id': team.team_id,
+                    'error': str(e),
+                    'action': 'auto_workflow_system_error'
+                },
+                exc_info=True
+            )
+    
+    async def _create_demo_workflow(self, team_id: str, creator_id: str):
+        """Create a demo workflow to showcase the system capabilities"""
+        
+        try:
+            monitoring_service = self.monitoring_services.get(team_id)
+            if not monitoring_service:
+                return
+            
+            # Create a simple demo marketing workflow
+            workflow = await monitoring_service.workflow_engine.create_marketing_workflow(
+                project_name="团队能力展示",
+                project_description="展示Mercatus多智能体系统的营销策略制定、内容生成和合规审核能力",
+                target_platforms=["twitter", "facebook"], 
+                target_regions=["us", "cn"],
+                content_types=["text", "text_image"],
+                creator_id=creator_id
+            )
+            
+            # Start the workflow
+            await monitoring_service.workflow_engine.start_workflow(workflow.workflow_id)
+            
+            self.logger.info(
+                f"Demo workflow created and started for team {team_id}",
+                extra={
+                    'team_id': team_id,
+                    'workflow_id': workflow.workflow_id,
+                    'workflow_name': workflow.workflow_name,
+                    'node_count': len(workflow.nodes),
+                    'action': 'demo_workflow_created'
+                }
+            )
+            
+        except Exception as e:
+            self.logger.error(
+                f"Error creating demo workflow for team {team_id}: {str(e)}",
+                extra={'team_id': team_id, 'error': str(e)},
+                exc_info=True
             )
     
     def _get_max_instances_for_role(self, config: TeamConfiguration, role: ExpertRole) -> int:

@@ -404,4 +404,153 @@ async def get_team_analytics(
             exc_info=True
         )
         log_api_response(request_id, 500, None, execution_time)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/teams/{team_id}/workflow-status", response_model=Dict[str, Any])
+async def get_team_workflow_status(
+    request: Request,
+    team_id: str,
+    manager: BlackboardManager = Depends(get_blackboard_manager)
+):
+    """Get comprehensive workflow status for a team"""
+    start_time = time.time()
+    request_id = log_api_request(request, {"team_id": team_id})
+    
+    try:
+        with performance_logger.time_operation(
+            "api_workflow_status",
+            request_id=request_id,
+            team_id=team_id
+        ):
+            user_id = request.headers.get('X-User-ID', 'anonymous')
+            
+            business_logger.logger.info(
+                f"Workflow status request from user {user_id}",
+                extra={
+                    'request_id': request_id,
+                    'user_id': user_id,
+                    'team_id': team_id,
+                    'action': 'workflow_status_request'
+                }
+            )
+            
+            from app.core.team_manager import team_manager
+            result = await team_manager.get_team_workflow_status(team_id)
+            
+            execution_time = time.time() - start_time
+            log_api_response(request_id, 200, result, execution_time)
+            
+            return result
+            
+    except Exception as e:
+        execution_time = time.time() - start_time
+        error_response = {"status": "error", "error": str(e)}
+        log_api_response(request_id, 500, error_response, execution_time)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/teams/{team_id}/workflows/auto-marketing", response_model=Dict[str, Any])
+async def create_auto_marketing_workflow(
+    request: Request,
+    team_id: str,
+    workflow_data: CreateMarketingWorkflowRequest,
+    manager: BlackboardManager = Depends(get_blackboard_manager)
+):
+    """Create and auto-start a marketing workflow"""
+    start_time = time.time()
+    request_id = log_api_request(request, {**workflow_data.model_dump(), "team_id": team_id})
+    
+    try:
+        with performance_logger.time_operation(
+            "api_auto_marketing_workflow",
+            request_id=request_id,
+            team_id=team_id,
+            project_name=workflow_data.project_name
+        ):
+            user_id = request.headers.get('X-User-ID', 'anonymous')
+            
+            business_logger.logger.info(
+                f"Auto marketing workflow creation request from user {user_id}",
+                extra={
+                    'request_id': request_id,
+                    'user_id': user_id,
+                    'team_id': team_id,
+                    'project_name': workflow_data.project_name,
+                    'target_platforms': [p.value for p in workflow_data.target_platforms],
+                    'action': 'auto_marketing_workflow_request'
+                }
+            )
+            
+            from app.core.team_manager import team_manager
+            result = await team_manager.create_auto_marketing_workflow(
+                team_id=team_id,
+                project_name=workflow_data.project_name,
+                project_description=workflow_data.project_description,
+                target_platforms=[p.value for p in workflow_data.target_platforms],
+                target_regions=[r.value for r in workflow_data.target_regions],
+                content_types=[c.value for c in workflow_data.content_types],
+                creator_id=user_id
+            )
+            
+            execution_time = time.time() - start_time
+            log_api_response(request_id, 200, result, execution_time)
+            
+            return result
+            
+    except Exception as e:
+        execution_time = time.time() - start_time
+        error_response = {"status": "error", "error": str(e)}
+        log_api_response(request_id, 500, error_response, execution_time)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/teams/{team_id}/monitoring/dashboard", response_model=Dict[str, Any])
+async def get_monitoring_dashboard(
+    request: Request,
+    team_id: str
+):
+    """Get real-time monitoring dashboard for a team"""
+    start_time = time.time()
+    request_id = log_api_request(request, {"team_id": team_id})
+    
+    try:
+        with performance_logger.time_operation(
+            "api_monitoring_dashboard",
+            request_id=request_id,
+            team_id=team_id
+        ):
+            user_id = request.headers.get('X-User-ID', 'anonymous')
+            
+            business_logger.logger.info(
+                f"Monitoring dashboard request from user {user_id}",
+                extra={
+                    'request_id': request_id,
+                    'user_id': user_id,
+                    'team_id': team_id,
+                    'action': 'monitoring_dashboard_request'
+                }
+            )
+            
+            from app.core.team_manager import team_manager
+            monitoring_service = team_manager.get_monitoring_service(team_id)
+            
+            if not monitoring_service:
+                return {
+                    "status": "no_monitoring",
+                    "message": "Monitoring service not found for this team",
+                    "team_id": team_id
+                }
+            
+            result = await monitoring_service.get_monitoring_dashboard()
+            
+            execution_time = time.time() - start_time
+            log_api_response(request_id, 200, result, execution_time)
+            
+            return result
+            
+    except Exception as e:
+        execution_time = time.time() - start_time
+        error_response = {"status": "error", "error": str(e)}
+        log_api_response(request_id, 500, error_response, execution_time)
         raise HTTPException(status_code=500, detail=str(e)) 
