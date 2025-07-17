@@ -259,6 +259,19 @@ class TeamManager:
             current_count = len([e for e in team.expert_instances if e.expert_role == expert_role])
             max_count = self._get_max_instances_for_role(team.configuration, expert_role)
             
+            # Special check for Jeff (team leader) - only allow one instance
+            if expert_role == ExpertRole.PLANNER and current_count >= 1:
+                self.logger.warning(
+                    f"Team {team_id} already has team leader Jeff - cannot create additional PLANNER instances",
+                    extra={
+                        'team_id': team_id,
+                        'expert_role': expert_role.value,
+                        'current_count': current_count,
+                        'action': 'team_leader_limit_reached'
+                    }
+                )
+                return None
+            
             if current_count >= max_count:
                 self.logger.warning(
                     f"Team {team_id} at max {expert_role.value} instances ({max_count})",
@@ -274,7 +287,10 @@ class TeamManager:
             
             # Generate instance name if not provided
             if not instance_name:
-                instance_name = f"{expert_role.value.title()} {current_count + 1}"
+                if expert_role == ExpertRole.PLANNER:
+                    instance_name = "Jeff - Team Leader"
+                else:
+                    instance_name = f"{expert_role.value.title()} {current_count + 1}"
             
             # Create expert instance metadata
             instance = ExpertInstance(
@@ -283,7 +299,8 @@ class TeamManager:
                 instance_name=instance_name,
                 status="active",
                 max_concurrent_tasks=max_concurrent_tasks,
-                specializations=specializations or []
+                specializations=specializations or [],
+                is_team_leader=(expert_role == ExpertRole.PLANNER)  # Jeff is the team leader
             )
             
             # Create actual expert object
@@ -682,6 +699,34 @@ class TeamManager:
         
         # Analyze workload for each expert role
         for role in ExpertRole:
+            # Special handling for Jeff (team leader) - never scale
+            if role == ExpertRole.PLANNER:
+                # Jeff is the unique team leader - ensure exactly one instance exists
+                current_instances = [e for e in team.expert_instances if e.expert_role == role]
+                current_count = len(current_instances)
+                
+                if current_count == 0:
+                    # Emergency: create Jeff if missing
+                    jeff_instance = await self.create_expert_instance(
+                        team_id, 
+                        ExpertRole.PLANNER,
+                        "Jeff - Team Leader",
+                        max_concurrent_tasks=5,
+                        specializations=["strategy_planning", "team_leadership", "market_analysis", "budget_planning"]
+                    )
+                    if jeff_instance:
+                        jeff_instance.is_team_leader = True
+                        scaling_actions.append("Emergency: Created missing team leader Jeff")
+                elif current_count > 1:
+                    # Emergency: remove excess Jeff instances (should never happen)
+                    for i in range(1, current_count):
+                        if await self.remove_expert_instance(team_id, current_instances[i].instance_id):
+                            scaling_actions.append(f"Emergency: Removed excess leader instance {current_instances[i].instance_name}")
+                
+                # Skip normal scaling logic for Jeff
+                continue
+            
+            # Normal scaling logic for Monica and Henry
             # Get pending tasks for this role
             pending_filter = TaskFilter(
                 status=[TaskStatus.PENDING],
@@ -875,14 +920,23 @@ class TeamManager:
     async def _initialize_team_experts(self, team: Team):
         """Initialize default expert instances for a new team"""
         
-        # Create initial Jeff instances (planners)
-        for i in range(1):  # Start with 1 Jeff
-            await self.create_expert_instance(
-                team.team_id,
-                ExpertRole.PLANNER,
-                f"Jeff {i+1}",
-                max_concurrent_tasks=3
-            )
+        # Create single Jeff instance (team leader)
+        jeff_instance = await self.create_expert_instance(
+            team.team_id,
+            ExpertRole.PLANNER,
+            "Jeff - Team Leader",
+            max_concurrent_tasks=5,  # Leader handles more tasks
+            specializations=["strategy_planning", "team_leadership", "market_analysis", "budget_planning"]
+        )
+        if jeff_instance:
+            # Mark Jeff as team leader
+            jeff_instance.is_team_leader = True
+            # Update the team data to reflect leader status
+            for i, expert in enumerate(team.expert_instances):
+                if expert.instance_id == jeff_instance.instance_id:
+                    team.expert_instances[i].is_team_leader = True
+                    break
+            await self._store_team(team)
         
         # Create initial Monica instances (executors)
         for i in range(2):  # Start with 2 Monicas
@@ -926,6 +980,9 @@ class TeamManager:
             # Start monitoring service
             await monitoring_service.start_monitoring()
             
+            # Trigger team kick-off planning
+            await self._trigger_team_kickoff_planning(team.team_id, team.owner_id)
+            
             # Create a welcome/demo workflow to showcase the system
             await self._create_demo_workflow(team.team_id, team.owner_id)
             
@@ -934,6 +991,7 @@ class TeamManager:
                 extra={
                     'team_id': team.team_id,
                     'monitoring_started': True,
+                    'kickoff_planning_triggered': True,
                     'demo_workflow_created': True,
                     'action': 'auto_workflow_system_started'
                 }
@@ -946,6 +1004,90 @@ class TeamManager:
                     'team_id': team.team_id,
                     'error': str(e),
                     'action': 'auto_workflow_system_error'
+                },
+                exc_info=True
+            )
+    
+    async def _trigger_team_kickoff_planning(self, team_id: str, creator_id: str):
+        """Trigger the team kick-off planning workflow."""
+        monitoring_service = self.monitoring_services.get(team_id)
+        if not monitoring_service:
+            self.logger.warning(
+                f"Cannot trigger kick-off planning for team {team_id}: monitoring service not found.",
+                extra={'team_id': team_id}
+            )
+            return
+
+        try:
+            # Create a new task for kick-off planning
+            blackboard = self.get_blackboard(team_id)
+            if not blackboard:
+                self.logger.error(
+                    f"Cannot create kick-off planning task for team {team_id}: BlackBoard not found.",
+                    extra={'team_id': team_id}
+                )
+                return
+
+            task_title = "团队启动规划"
+            task_description = "请团队成员讨论并制定团队启动计划，包括目标、策略和资源分配。"
+            task_goal = "制定团队启动计划"
+            required_expert_role = ExpertRole.PLANNER # Assuming the planner is the one who initiates
+
+            task = await blackboard.create_task(
+                title=task_title,
+                description=task_description,
+                goal=task_goal,
+                required_expert_role=required_expert_role,
+                creator_id=creator_id
+            )
+
+            await blackboard.auto_assign_task(task.task_id)
+            self.logger.info(
+                f"Kick-off planning task created for team {team_id}",
+                extra={
+                    'team_id': team_id,
+                    'task_id': task.task_id,
+                    'task_title': task.title,
+                    'action': 'kickoff_planning_task_created'
+                }
+            )
+
+            # Start the workflow for the new task
+            workflow_engine = monitoring_service.workflow_engine
+            workflow = await workflow_engine.create_workflow(
+                workflow_name=f"团队启动规划流程_{task.task_id}",
+                workflow_description=f"为团队 {task.title} 制定执行计划",
+                nodes=[
+                    {
+                        "node_type": "task_assignment",
+                        "task_id": task.task_id,
+                        "expert_role": required_expert_role.value,
+                        "max_retries": 3,
+                        "retry_delay": 300,
+                        "timeout": 3600
+                    }
+                ],
+                creator_id=creator_id
+            )
+            await workflow_engine.start_workflow(workflow.workflow_id)
+            self.logger.info(
+                f"Kick-off planning workflow started for team {team_id}",
+                extra={
+                    'team_id': team_id,
+                    'workflow_id': workflow.workflow_id,
+                    'workflow_name': workflow.workflow_name,
+                    'node_count': len(workflow.nodes),
+                    'action': 'kickoff_planning_workflow_started'
+                }
+            )
+
+        except Exception as e:
+            self.logger.error(
+                f"Error triggering kick-off planning for team {team_id}: {str(e)}",
+                extra={
+                    'team_id': team_id,
+                    'error': str(e),
+                    'action': 'kickoff_planning_error'
                 },
                 exc_info=True
             )
@@ -988,6 +1130,228 @@ class TeamManager:
                 extra={'team_id': team_id, 'error': str(e)},
                 exc_info=True
             )
+    
+    async def handle_task_max_retries_reached(self, team_id: str, task_id: str, failed_by: str = "system") -> bool:
+        """Handle when a task reaches maximum retries and trigger Jeff's replanning"""
+        
+        try:
+            blackboard = self.get_blackboard(team_id)
+            if not blackboard:
+                self.logger.error(f"BlackBoard not found for team {team_id}")
+                return False
+            
+            # Get the failed task
+            failed_task = await blackboard.get_task(task_id)
+            if not failed_task:
+                self.logger.error(f"Task {task_id} not found")
+                return False
+            
+            # Mark task as requiring replanning
+            failed_task.requires_replanning = True
+            failed_task.last_failure_timestamp = datetime.now()
+            await blackboard._store_task(failed_task)
+            
+            self.logger.warning(
+                f"Task {task_id} reached max retries, triggering replanning",
+                extra={
+                    'team_id': team_id,
+                    'task_id': task_id,
+                    'retry_count': failed_task.retry_count,
+                    'max_retries': failed_task.max_retries,
+                    'action': 'max_retries_reached'
+                }
+            )
+            
+            # Trigger Jeff's replanning for all incomplete tasks
+            await self._trigger_failure_replanning(team_id, task_id, failed_by)
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(
+                f"Error handling max retries for task {task_id}: {str(e)}",
+                extra={
+                    'team_id': team_id,
+                    'task_id': task_id,
+                    'error': str(e),
+                    'action': 'max_retries_handling_error'
+                },
+                exc_info=True
+            )
+            return False
+    
+    async def _trigger_failure_replanning(self, team_id: str, failed_task_id: str, creator_id: str):
+        """Trigger Jeff's replanning due to task failure"""
+        
+        try:
+            blackboard = self.get_blackboard(team_id)
+            if not blackboard:
+                return
+            
+            # Get all incomplete tasks for replanning
+            from app.types.blackboard import TaskFilter, TaskSearchCriteria, TaskStatus
+            
+            incomplete_filter = TaskFilter(
+                status=[TaskStatus.PENDING, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS, TaskStatus.FAILED]
+            )
+            incomplete_criteria = TaskSearchCriteria(filters=incomplete_filter)
+            incomplete_tasks, _ = await blackboard.search_tasks(incomplete_criteria)
+            
+            # Create replanning task for Jeff
+            replanning_task = await blackboard.create_task(
+                title=f"任务失败重新规划 - 基于失败任务 {failed_task_id}",
+                description=f"由于任务 {failed_task_id} 达到最大重试次数失败，需要对当前所有未完成任务进行重新规划和策略调整",
+                goal="重新评估和规划所有未完成任务，制定新的执行策略",
+                required_expert_role=ExpertRole.PLANNER,
+                creator_id=creator_id,
+                metadata={
+                    "context_data": {
+                        "trigger_type": "task_failure_replan",
+                        "failed_task_id": failed_task_id,
+                        "incomplete_task_count": len(incomplete_tasks),
+                        "incomplete_task_ids": [task.task_id for task in incomplete_tasks]
+                    }
+                }
+            )
+            
+            # Auto-assign to Jeff (team leader)
+            await blackboard.auto_assign_task(replanning_task.task_id)
+            
+            self.logger.info(
+                f"Failure replanning task created for team {team_id}",
+                extra={
+                    'team_id': team_id,
+                    'replanning_task_id': replanning_task.task_id,
+                    'failed_task_id': failed_task_id,
+                    'incomplete_task_count': len(incomplete_tasks),
+                    'action': 'failure_replanning_triggered'
+                }
+            )
+            
+        except Exception as e:
+            self.logger.error(
+                f"Error triggering failure replanning for team {team_id}: {str(e)}",
+                extra={
+                    'team_id': team_id,
+                    'failed_task_id': failed_task_id,
+                    'error': str(e),
+                    'action': 'failure_replanning_error'
+                },
+                exc_info=True
+            )
+    
+    async def handle_user_suggestion_replanning(
+        self, 
+        team_id: str, 
+        user_id: str, 
+        suggestion_content: str,
+        target_task_ids: List[str] = None
+    ) -> Dict[str, Any]:
+        """Handle user suggestion for replanning tasks"""
+        
+        try:
+            blackboard = self.get_blackboard(team_id)
+            if not blackboard:
+                return {
+                    "status": "error",
+                    "message": "BlackBoard not found for this team"
+                }
+            
+            # Get team info to verify user access
+            team = await self.get_team(team_id)
+            if not team:
+                return {
+                    "status": "error", 
+                    "message": "Team not found"
+                }
+            
+            # Verify user is team member
+            is_team_member = any(member.user_id == user_id for member in team.members)
+            if not is_team_member:
+                return {
+                    "status": "error",
+                    "message": "User is not a member of this team"
+                }
+            
+            # Get incomplete tasks to replan
+            from app.types.blackboard import TaskFilter, TaskSearchCriteria, TaskStatus
+            
+            if target_task_ids:
+                # User specified specific tasks
+                target_tasks = []
+                for task_id in target_task_ids:
+                    task = await blackboard.get_task(task_id)
+                    if task and task.status in [TaskStatus.PENDING, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS, TaskStatus.FAILED]:
+                        target_tasks.append(task)
+            else:
+                # Get all incomplete tasks
+                incomplete_filter = TaskFilter(
+                    status=[TaskStatus.PENDING, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS, TaskStatus.FAILED]
+                )
+                incomplete_criteria = TaskSearchCriteria(filters=incomplete_filter)
+                target_tasks, _ = await blackboard.search_tasks(incomplete_criteria)
+            
+            if not target_tasks:
+                return {
+                    "status": "warning",
+                    "message": "No incomplete tasks found for replanning"
+                }
+            
+            # Create user suggestion replanning task for Jeff
+            replanning_task = await blackboard.create_task(
+                title=f"用户建议重新规划",
+                description=f"用户 {user_id} 建议对当前任务进行重新规划。用户建议内容：{suggestion_content}",
+                goal="根据用户建议重新评估和规划相关任务，优化执行策略",
+                required_expert_role=ExpertRole.PLANNER,
+                creator_id=user_id,
+                metadata={
+                    "context_data": {
+                        "trigger_type": "user_suggestion",
+                        "suggestion_content": suggestion_content,
+                        "suggested_by": user_id,
+                        "target_task_count": len(target_tasks),
+                        "target_task_ids": [task.task_id for task in target_tasks]
+                    }
+                }
+            )
+            
+            # Auto-assign to Jeff (team leader)
+            await blackboard.auto_assign_task(replanning_task.task_id)
+            
+            self.logger.info(
+                f"User suggestion replanning task created for team {team_id}",
+                extra={
+                    'team_id': team_id,
+                    'replanning_task_id': replanning_task.task_id,
+                    'suggested_by': user_id,
+                    'target_task_count': len(target_tasks),
+                    'suggestion_content': suggestion_content,
+                    'action': 'user_suggestion_replanning_triggered'
+                }
+            )
+            
+            return {
+                "status": "success",
+                "message": "User suggestion replanning task created successfully",
+                "replanning_task_id": replanning_task.task_id,
+                "target_task_count": len(target_tasks)
+            }
+            
+        except Exception as e:
+            self.logger.error(
+                f"Error handling user suggestion replanning for team {team_id}: {str(e)}",
+                extra={
+                    'team_id': team_id,
+                    'user_id': user_id,
+                    'error': str(e),
+                    'action': 'user_suggestion_replanning_error'
+                },
+                exc_info=True
+            )
+            return {
+                "status": "error",
+                "message": f"Error processing user suggestion: {str(e)}"
+            }
     
     def _get_max_instances_for_role(self, config: TeamConfiguration, role: ExpertRole) -> int:
         """Get maximum allowed instances for an expert role"""

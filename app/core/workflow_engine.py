@@ -530,22 +530,54 @@ class WorkflowEngine:
                     f"Retrying failed task {task_id} (attempt {node.retry_count + 1}/{node.max_retries})"
                 )
                 
-                # 重置任务状态
+                # 重置任务状态并重试
                 from app.core.team_manager import team_manager
                 blackboard = team_manager.get_blackboard(self.team_id)
                 if blackboard:
                     task = await blackboard.get_task(task_id)
                     if task:
+                        # Update retry count
+                        task.retry_count = node.retry_count + 1
+                        task.failure_reasons.append(f"Retry attempt {node.retry_count + 1}")
                         task.status = TaskStatus.PENDING
                         await blackboard._store_task(task)
                         node.retry_count += 1
                         node.status = TaskStatus.PENDING
             else:
                 self.logger.error(
-                    f"Task {task_id} failed after {node.max_retries} retries, marking workflow as failed"
+                    f"Task {task_id} failed after {node.max_retries} retries, triggering replanning"
                 )
-                workflow.status = WorkflowStatus.FAILED
-                await self._save_workflow(workflow)
+                
+                # Trigger Jeff's replanning instead of just marking workflow as failed
+                from app.core.team_manager import team_manager
+                
+                # Update task to mark it as requiring replanning
+                blackboard = team_manager.get_blackboard(self.team_id)
+                if blackboard:
+                    task = await blackboard.get_task(task_id)
+                    if task:
+                        task.retry_count = node.max_retries
+                        task.requires_replanning = True
+                        task.last_failure_timestamp = datetime.now()
+                        await blackboard._store_task(task)
+                
+                # Trigger Jeff's replanning
+                replanning_triggered = await team_manager.handle_task_max_retries_reached(
+                    self.team_id, task_id, "workflow_engine"
+                )
+                
+                if replanning_triggered:
+                    self.logger.info(
+                        f"Replanning triggered for failed task {task_id} in workflow {workflow.workflow_id}"
+                    )
+                    # Continue workflow execution, don't mark as failed immediately
+                    # Jeff will handle replanning and potentially restart tasks
+                else:
+                    self.logger.error(
+                        f"Failed to trigger replanning for task {task_id}, marking workflow as failed"
+                    )
+                    workflow.status = WorkflowStatus.FAILED
+                    await self._save_workflow(workflow)
     
     async def _execute_workflow_node(self, workflow: WorkflowDefinition, node: WorkflowNode):
         """执行工作流节点（触发任务执行）"""

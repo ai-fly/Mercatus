@@ -93,6 +93,13 @@ class CreateMarketingWorkflowRequest(BaseModel):
     content_types: List[ContentType]
     priority: TaskPriority = TaskPriority.MEDIUM
 
+class CreateAutoMarketingWorkflowRequest(BaseModel):
+    project_name: str
+    project_description: str
+    target_platforms: List[Platform]
+    target_regions: List[Region]
+    content_types: List[ContentType]
+
 # === API端点 ===
 
 @router.post("/teams", response_model=Dict[str, Any])
@@ -454,42 +461,39 @@ async def get_team_workflow_status(
 async def create_auto_marketing_workflow(
     request: Request,
     team_id: str,
-    workflow_data: CreateMarketingWorkflowRequest,
+    workflow_data: CreateAutoMarketingWorkflowRequest,
     manager: BlackboardManager = Depends(get_blackboard_manager)
 ):
-    """Create and auto-start a marketing workflow"""
+    """Create and start an automated marketing workflow"""
     start_time = time.time()
-    request_id = log_api_request(request, {**workflow_data.model_dump(), "team_id": team_id})
+    request_id = log_api_request(request, workflow_data.model_dump())
     
     try:
         with performance_logger.time_operation(
-            "api_auto_marketing_workflow",
+            "api_create_auto_marketing_workflow",
             request_id=request_id,
-            team_id=team_id,
-            project_name=workflow_data.project_name
+            team_id=team_id
         ):
             user_id = request.headers.get('X-User-ID', 'anonymous')
             
             business_logger.logger.info(
-                f"Auto marketing workflow creation request from user {user_id}",
+                f"Creating auto marketing workflow for team {team_id}",
                 extra={
                     'request_id': request_id,
                     'user_id': user_id,
                     'team_id': team_id,
                     'project_name': workflow_data.project_name,
-                    'target_platforms': [p.value for p in workflow_data.target_platforms],
                     'action': 'auto_marketing_workflow_request'
                 }
             )
             
-            from app.core.team_manager import team_manager
-            result = await team_manager.create_auto_marketing_workflow(
+            result = await manager.create_auto_marketing_workflow(
                 team_id=team_id,
                 project_name=workflow_data.project_name,
                 project_description=workflow_data.project_description,
-                target_platforms=[p.value for p in workflow_data.target_platforms],
-                target_regions=[r.value for r in workflow_data.target_regions],
-                content_types=[c.value for c in workflow_data.content_types],
+                target_platforms=workflow_data.target_platforms,
+                target_regions=workflow_data.target_regions,
+                content_types=workflow_data.content_types,
                 creator_id=user_id
             )
             
@@ -497,11 +501,104 @@ async def create_auto_marketing_workflow(
             log_api_response(request_id, 200, result, execution_time)
             
             return result
-            
+    
     except Exception as e:
         execution_time = time.time() - start_time
-        error_response = {"status": "error", "error": str(e)}
-        log_api_response(request_id, 500, error_response, execution_time)
+        api_logger.error(
+            f"Auto marketing workflow creation failed: {str(e)}",
+            extra={
+                'request_id': request_id,
+                'team_id': team_id,
+                'error_type': type(e).__name__,
+                'error_message': str(e),
+                'execution_time': execution_time,
+                'action': 'api_error'
+            },
+            exc_info=True
+        )
+        log_api_response(request_id, 500, None, execution_time)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/teams/{team_id}/planning/user-suggestion", response_model=Dict[str, Any])
+async def submit_user_suggestion_replanning(
+    request: Request,
+    team_id: str,
+    suggestion_data: dict,
+    manager: BlackboardManager = Depends(get_blackboard_manager)
+):
+    """Submit user suggestion for task replanning"""
+    start_time = time.time()
+    request_id = log_api_request(request, suggestion_data)
+    
+    try:
+        with performance_logger.time_operation(
+            "api_user_suggestion_replanning",
+            request_id=request_id,
+            team_id=team_id
+        ):
+            user_id = request.headers.get('X-User-ID', 'anonymous')
+            
+            # Extract suggestion data
+            suggestion_content = suggestion_data.get('suggestion_content', '')
+            target_task_ids = suggestion_data.get('target_task_ids', None)
+            
+            if not suggestion_content:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="suggestion_content is required"
+                )
+            
+            business_logger.logger.info(
+                f"User suggestion replanning request for team {team_id}",
+                extra={
+                    'request_id': request_id,
+                    'user_id': user_id,
+                    'team_id': team_id,
+                    'suggestion_content': suggestion_content,
+                    'target_task_count': len(target_task_ids) if target_task_ids else 0,
+                    'action': 'user_suggestion_replanning_request'
+                }
+            )
+            
+            result = await manager.team_manager.handle_user_suggestion_replanning(
+                team_id=team_id,
+                user_id=user_id,
+                suggestion_content=suggestion_content,
+                target_task_ids=target_task_ids
+            )
+            
+            execution_time = time.time() - start_time
+            
+            # Determine HTTP status based on result
+            if result.get("status") == "error":
+                status_code = 400
+            elif result.get("status") == "warning":
+                status_code = 200  # Still successful but with warnings
+            else:
+                status_code = 200
+            
+            log_api_response(request_id, status_code, result, execution_time)
+            
+            return result
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        execution_time = time.time() - start_time
+        api_logger.error(
+            f"User suggestion replanning failed: {str(e)}",
+            extra={
+                'request_id': request_id,
+                'team_id': team_id,
+                'error_type': type(e).__name__,
+                'error_message': str(e),
+                'execution_time': execution_time,
+                'action': 'api_error'
+            },
+            exc_info=True
+        )
+        log_api_response(request_id, 500, None, execution_time)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -553,4 +650,86 @@ async def get_monitoring_dashboard(
         execution_time = time.time() - start_time
         error_response = {"status": "error", "error": str(e)}
         log_api_response(request_id, 500, error_response, execution_time)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/teams/{team_id}/planning/user-suggestion", response_model=Dict[str, Any])
+async def submit_user_suggestion_replanning(
+    request: Request,
+    team_id: str,
+    suggestion_data: dict,
+    manager: BlackboardManager = Depends(get_blackboard_manager)
+):
+    """Submit user suggestion for task replanning"""
+    start_time = time.time()
+    request_id = log_api_request(request, suggestion_data)
+    
+    try:
+        with performance_logger.time_operation(
+            "api_user_suggestion_replanning",
+            request_id=request_id,
+            team_id=team_id
+        ):
+            user_id = request.headers.get('X-User-ID', 'anonymous')
+            
+            # Extract suggestion data
+            suggestion_content = suggestion_data.get('suggestion_content', '')
+            target_task_ids = suggestion_data.get('target_task_ids', None)
+            
+            if not suggestion_content:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="suggestion_content is required"
+                )
+            
+            business_logger.logger.info(
+                f"User suggestion replanning request for team {team_id}",
+                extra={
+                    'request_id': request_id,
+                    'user_id': user_id,
+                    'team_id': team_id,
+                    'suggestion_content': suggestion_content,
+                    'target_task_count': len(target_task_ids) if target_task_ids else 0,
+                    'action': 'user_suggestion_replanning_request'
+                }
+            )
+            
+            result = await manager.team_manager.handle_user_suggestion_replanning(
+                team_id=team_id,
+                user_id=user_id,
+                suggestion_content=suggestion_content,
+                target_task_ids=target_task_ids
+            )
+            
+            execution_time = time.time() - start_time
+            
+            # Determine HTTP status based on result
+            if result.get("status") == "error":
+                status_code = 400
+            elif result.get("status") == "warning":
+                status_code = 200  # Still successful but with warnings
+            else:
+                status_code = 200
+            
+            log_api_response(request_id, status_code, result, execution_time)
+            
+            return result
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        execution_time = time.time() - start_time
+        api_logger.error(
+            f"User suggestion replanning failed: {str(e)}",
+            extra={
+                'request_id': request_id,
+                'team_id': team_id,
+                'error_type': type(e).__name__,
+                'error_message': str(e),
+                'execution_time': execution_time,
+                'action': 'api_error'
+            },
+            exc_info=True
+        )
+        log_api_response(request_id, 500, None, execution_time)
         raise HTTPException(status_code=500, detail=str(e)) 

@@ -277,6 +277,36 @@ class AutoTaskScheduler:
         if not candidate_experts:
             return None
         
+        # Special handling for Jeff (team leader)
+        if task.required_expert_role == ExpertRole.PLANNER:
+            # Jeff is the unique team leader - should be the only PLANNER
+            team_leader = next((expert for expert in candidate_experts if expert.is_team_leader), None)
+            if team_leader:
+                self.logger.info(
+                    f"Assigning strategic planning task to team leader: {team_leader.instance_name}",
+                    extra={
+                        'task_id': task.task_id,
+                        'team_id': self.team_id,
+                        'team_leader': team_leader.instance_name,
+                        'leader_load': team_leader.current_task_count,
+                        'action': 'team_leader_assignment'
+                    }
+                )
+                return team_leader
+            else:
+                self.logger.error(
+                    f"No team leader found for PLANNER task {task.task_id}",
+                    extra={
+                        'task_id': task.task_id,
+                        'team_id': self.team_id,
+                        'available_planners': len(candidate_experts),
+                        'action': 'team_leader_missing'
+                    }
+                )
+                # Fallback to first available PLANNER if leader flag is not set
+                return candidate_experts[0] if candidate_experts else None
+        
+        # Regular assignment logic for Monica and Henry
         # 获取调度规则
         rule = self.scheduling_rules.get(task.required_expert_role)
         if not rule:

@@ -302,10 +302,11 @@ scaling_result = await team_manager.auto_scale_team(team.team_id)
 from app.types.blackboard import TeamConfiguration
 
 config = TeamConfiguration(
-    max_jeff_instances=3,      # Maximum Jeff (planner) instances
+    max_jeff_instances=1,      # Maximum Jeff (planner) instances - Jeff is unique team leader
     max_monica_instances=5,    # Maximum Monica (executor) instances
     max_henry_instances=2,     # Maximum Henry (evaluator) instances
     auto_scaling_enabled=True, # Enable automatic scaling
+    jeff_scaling_enabled=False,# Jeff never scales - unique leader
     task_queue_limit=100,      # Maximum tasks in queue
     concurrent_task_limit=20   # Maximum concurrent tasks
 )
