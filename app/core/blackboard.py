@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Type
+from typing import Dict, List, Optional, Tuple, Type, Any
 from uuid import uuid4
 
 from app.types.blackboard import (
@@ -20,9 +20,10 @@ class BlackBoard:
     """
     Multi-tenant BlackBoard system for team collaboration and task management.
     Provides shared visibility of all tasks across team members with assignment to expert instances.
+    Now uses hybrid storage: PostgreSQL for persistence + Redis for caching.
     """
     
-    def __init__(self, team_id: str):
+    def __init__(self, team_id: str, hybrid_storage_service=None):
         """Initialize BlackBoard for a specific team"""
         self.team_id = team_id
         self.redis_client = redis_client_instance.get_redis_client()
@@ -30,7 +31,10 @@ class BlackBoard:
         self.business_logger = get_business_logger()
         self.performance_logger = get_performance_logger()
         
-        # Redis key prefixes
+        # 混合存储服务
+        self.hybrid_storage = hybrid_storage_service
+        
+        # Redis key prefixes (用于缓存和实时状态)
         self.task_prefix = f"blackboard:{team_id}:task"
         self.state_key = f"blackboard:{team_id}:state"
         self.expert_prefix = f"blackboard:{team_id}:expert"
@@ -39,9 +43,9 @@ class BlackBoard:
         self.notification_prefix = f"blackboard:{team_id}:notification"
         self.comment_prefix = f"blackboard:{team_id}:comment"
         
-        self.logger.info(f"BlackBoard initialized for team {team_id}")
+        self.logger.info(f"BlackBoard initialized for team {team_id} with hybrid storage")
     
-    # === Task Management Methods ===
+    # === Task Management (Hybrid Storage) ===
     
     async def create_task(
         self,
@@ -59,13 +63,13 @@ class BlackBoard:
         metadata: Dict = None,
         parent_task_id: Optional[str] = None
     ) -> BlackboardTask:
-        """Create a new task and add it to the BlackBoard"""
+
+        """Create a new task with hybrid storage"""
         
         with self.performance_logger.time_operation(
-            "create_task", 
-            team_id=self.team_id, 
-            expert_role=required_expert_role.value,
-            priority=priority.value
+            "blackboard_create_task",
+            team_id=self.team_id,
+            expert_role=required_expert_role.value
         ):
             # 记录任务创建开始
             self.logger.debug(
@@ -78,68 +82,51 @@ class BlackBoard:
                 }
             )
             
-            task = BlackboardTask(
-                team_id=self.team_id,
-                title=title,
-                description=description,
-                goal=goal,
-                required_expert_role=required_expert_role,
-                priority=priority,
-                target_platforms=target_platforms or [],
-                target_regions=target_regions or [],
-                content_types=content_types or [],
-                due_date=due_date,
-                dependencies=dependencies or [],
-                parent_task_id=parent_task_id
-            )
+            # 准备任务数据
+            task_data = {
+                "task_id": str(uuid4()),
+                "team_id": self.team_id,
+                "title": title,
+                "description": description,
+                "goal": goal,
+                "required_expert_role": required_expert_role.value,
+                "priority": priority.value,
+                "target_platforms": [p.value for p in (target_platforms or [])],
+                "target_regions": [r.value for r in (target_regions or [])],
+                "content_types": [c.value for c in (content_types or [])],
+                "due_date": due_date,
+                "dependencies": [dep.model_dump() for dep in (dependencies or [])],
+                "parent_task_id": parent_task_id,
+                "creator_id": creator_id,
+                "metadata": metadata or {}
+            }
             
-            if metadata:
-                task.metadata.context_data.update(metadata)
-                self.logger.debug(f"Added metadata to task {task.task_id}: {list(metadata.keys())}")
-            
-            # Store task in Redis
-            task_key = f"{self.task_prefix}:{task.task_id}"
-            await self._set_redis_value(task_key, task.model_dump_json())
-            
-            # Update state
-            await self._add_task_to_state(task.task_id, TaskStatus.PENDING)
-            
-            # Create event
-            await self._create_event(
-                task.task_id,
-                "task_created",
-                {"creator_id": creator_id, "priority": priority.value},
-                creator_id
-            )
-            
-            # Send notifications
-            await self._notify_team_members(
-                task.task_id,
-                "task_created",
-                f"New task created: {title}",
-                f"Task '{title}' requires {required_expert_role.value} expert",
-                [creator_id]
-            )
-            
-            # 使用业务日志记录器
-            self.business_logger.log_task_created(
-                task.task_id, title, self.team_id, creator_id, priority.value
-            )
-            
-            self.logger.info(
-                f"Created task {task.task_id}: {title}",
-                extra={
-                    'task_id': task.task_id,
-                    'team_id': self.team_id,
-                    'user_id': creator_id,
-                    'expert_role': required_expert_role.value,
-                    'priority': priority.value,
-                    'target_platforms': [p.value for p in (target_platforms or [])],
-                    'target_regions': [r.value for r in (target_regions or [])]
-                }
-            )
-            
-            return task
+            # 使用混合存储创建任务
+            if self.hybrid_storage:
+                result = await self.hybrid_storage.create_task(task_data)
+                if result["status"] == "success":
+                    # 创建 BlackboardTask 对象用于返回
+                    task = BlackboardTask(**result["task"])
+                    
+                    # 更新 Redis 状态
+                    await self._add_task_to_state(task.task_id, TaskStatus.PENDING)
+                    
+                    self.logger.info(
+                        f"Task created successfully with hybrid storage: {task.task_id}",
+                        extra={
+                            'team_id': self.team_id,
+                            'task_id': task.task_id,
+                            'expert_role': required_expert_role.value,
+                            'storage_type': 'hybrid'
+                        }
+                    )
+                    
+                    return task
+                else:
+                    raise Exception(f"Failed to create task: {result['message']}")
+            else:
+                # 回退到纯 Redis 存储
+                return await self._create_task_redis_only(task_data)
     
     async def assign_task(
         self, 
@@ -561,7 +548,7 @@ class BlackBoard:
             
             return True
     
-    # === Expert Instance Management ===
+    # === Expert Instance Management (Hybrid Storage) ===
     
     async def register_expert_instance(
         self,
@@ -586,10 +573,28 @@ class BlackBoard:
         self.logger.info(f"Registered expert instance {instance.instance_id}: {instance_name}")
         return instance
     
+    async def create_expert_instance(self, expert_data: Dict[str, Any]) -> ExpertInstance:
+        """Create expert instance with hybrid storage"""
+        
+        try:
+            if self.hybrid_storage:
+                result = await self.hybrid_storage.create_expert_instance(expert_data)
+                if result["status"] == "success":
+                    return ExpertInstance(**result["expert"])
+                else:
+                    raise Exception(f"Failed to create expert instance: {result['message']}")
+            else:
+                # 回退到纯 Redis 存储
+                return await self._create_expert_instance_redis_only(expert_data)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to create expert instance: {str(e)}")
+            raise
+    
     async def get_available_experts(self, required_role: ExpertRole) -> List[ExpertInstance]:
         """Get available expert instances for a specific role"""
         
-        all_experts = await self._get_all_expert_instances()
+        all_experts = await self.get_team_experts() # Use hybrid storage
         available_experts = []
         
         for expert in all_experts:
@@ -602,11 +607,56 @@ class BlackBoard:
         available_experts.sort(key=lambda x: x.current_task_count)
         return available_experts
     
-    # === Task Query and Search Methods ===
-    
-    async def get_task(self, task_id: str) -> Optional[BlackboardTask]:
-        """Get a specific task by ID"""
+    async def get_expert_instance(self, instance_id: str) -> Optional[ExpertInstance]:
+        """Get expert instance with hybrid storage"""
         
+        try:
+            if self.hybrid_storage:
+                expert_data = await self.hybrid_storage.get_expert_instance(instance_id)
+                if expert_data:
+                    return ExpertInstance(**expert_data)
+                return None
+            else:
+                # 回退到纯 Redis 存储
+                return await self._get_expert_instance_redis_only(instance_id)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get expert instance {instance_id}: {str(e)}")
+            return None
+    
+    async def get_team_experts(self, role: Optional[ExpertRole] = None) -> List[ExpertInstance]:
+        """Get team expert instances with hybrid storage"""
+        
+        try:
+            if self.hybrid_storage:
+                role_value = role.value if role else None
+                experts_data = await self.hybrid_storage.get_team_experts(self.team_id, role_value)
+                return [ExpertInstance(**expert_data) for expert_data in experts_data]
+            else:
+                # 回退到纯 Redis 存储
+                return await self._get_team_experts_redis_only(role)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get team experts: {str(e)}")
+            return []
+    
+    # === Redis-only Fallback Methods ===
+    
+    async def _create_task_redis_only(self, task_data: Dict[str, Any]) -> BlackboardTask:
+        """Create task using Redis only (fallback)"""
+        task = BlackboardTask(**task_data)
+        
+        # Store task in Redis
+        task_key = f"{self.task_prefix}:{task.task_id}"
+        await self._set_redis_value(task_key, task.model_dump_json())
+        
+        # Update state
+        await self._add_task_to_state(task.task_id, TaskStatus.PENDING)
+        
+        return task
+    
+    async def _get_task_redis_only(self, task_id: str) -> Optional[BlackboardTask]:
+        """Get task using Redis only (fallback)"""
         task_key = f"{self.task_prefix}:{task_id}"
         task_data = await self._get_redis_value(task_key)
         
@@ -614,10 +664,107 @@ class BlackBoard:
             return BlackboardTask.model_validate_json(task_data)
         return None
     
+    async def _update_task_status_redis_only(self, task_id: str, status: TaskStatus, **kwargs) -> Optional[BlackboardTask]:
+        """Update task status using Redis only (fallback)"""
+        task = await self._get_task_redis_only(task_id)
+        if task:
+            task.status = status
+            task.updated_at = datetime.now()
+            
+            # Update additional fields
+            for key, value in kwargs.items():
+                if hasattr(task, key):
+                    setattr(task, key, value)
+            
+            # Store updated task
+            await self._store_task(task)
+            
+            # Update state
+            old_status = await self._get_task_status_from_redis(task_id)
+            if old_status:
+                await self._move_task_in_state(task_id, TaskStatus(old_status), status)
+            
+            return task
+        return None
+    
+    async def _get_tasks_by_status_redis_only(self, status: TaskStatus) -> List[BlackboardTask]:
+        """Get tasks by status using Redis only (fallback)"""
+        state = await self._get_blackboard_state()
+        if not state:
+            return []
+        
+        status_field_map = {
+            TaskStatus.PENDING: "pending_tasks",
+            TaskStatus.ASSIGNED: "assigned_tasks",
+            TaskStatus.IN_PROGRESS: "in_progress_tasks",
+            TaskStatus.COMPLETED: "completed_tasks",
+            TaskStatus.FAILED: "failed_tasks"
+        }
+        
+        task_ids = getattr(state, status_field_map[status], [])
+        tasks = []
+        
+        for task_id in task_ids:
+            task = await self._get_task_redis_only(task_id)
+            if task:
+                tasks.append(task)
+        
+        return tasks
+    
+    async def _create_expert_instance_redis_only(self, expert_data: Dict[str, Any]) -> ExpertInstance:
+        """Create expert instance using Redis only (fallback)"""
+        expert = ExpertInstance(**expert_data)
+        await self._store_expert_instance(expert)
+        return expert
+    
+    async def _get_expert_instance_redis_only(self, instance_id: str) -> Optional[ExpertInstance]:
+        """Get expert instance using Redis only (fallback)"""
+        expert_key = f"{self.expert_prefix}:{instance_id}"
+        expert_data = await self._get_redis_value(expert_key)
+        
+        if expert_data:
+            return ExpertInstance.model_validate_json(expert_data)
+        return None
+    
+    async def _get_team_experts_redis_only(self, role: Optional[ExpertRole] = None) -> List[ExpertInstance]:
+        """Get team experts using Redis only (fallback)"""
+        pattern = f"{self.expert_prefix}:*"
+        expert_keys = await self._get_keys_by_pattern(pattern)
+        
+        experts = []
+        for key in expert_keys:
+            expert_data = await self._get_redis_value(key)
+            if expert_data:
+                expert = ExpertInstance.model_validate_json(expert_data)
+                if not role or expert.expert_role == role:
+                    experts.append(expert)
+        
+        return experts
+    
+    # === Task Query and Search Methods ===
+    
+    async def get_task(self, task_id: str) -> Optional[BlackboardTask]:
+        """Get a specific task by ID"""
+        
+        try:
+            if self.hybrid_storage:
+                # 从混合存储获取任务
+                task_data = await self.hybrid_storage.get_task(task_id)
+                if task_data:
+                    return BlackboardTask(**task_data)
+                return None
+            else:
+                # 回退到纯 Redis 存储
+                return await self._get_task_redis_only(task_id)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get task {task_id}: {str(e)}")
+            return None
+    
     async def search_tasks(self, criteria: TaskSearchCriteria) -> Tuple[List[BlackboardTask], int]:
         """Search tasks based on criteria"""
         
-        all_tasks = await self._get_all_tasks()
+        all_tasks = await self._get_all_tasks() # This method is not hybrid, so it remains Redis-only
         filtered_tasks = []
         
         for task in all_tasks:
@@ -651,34 +798,25 @@ class BlackBoard:
         return paginated_tasks, total_count
     
     async def get_tasks_by_status(self, status: TaskStatus) -> List[BlackboardTask]:
-        """Get all tasks with a specific status"""
+        """Get all tasks with a specific status using hybrid storage"""
         
-        state = await self._get_blackboard_state()
-        if not state:
+        try:
+            if self.hybrid_storage:
+                # 从混合存储获取任务
+                tasks_data = await self.hybrid_storage.get_team_tasks(self.team_id, status.value)
+                return [BlackboardTask(**task_data) for task_data in tasks_data]
+            else:
+                # 回退到纯 Redis 存储
+                return await self._get_tasks_by_status_redis_only(status)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get tasks by status {status}: {str(e)}")
             return []
-        
-        status_field_map = {
-            TaskStatus.PENDING: "pending_tasks",
-            TaskStatus.ASSIGNED: "assigned_tasks",
-            TaskStatus.IN_PROGRESS: "in_progress_tasks",
-            TaskStatus.COMPLETED: "completed_tasks",
-            TaskStatus.FAILED: "failed_tasks"
-        }
-        
-        task_ids = getattr(state, status_field_map[status], [])
-        tasks = []
-        
-        for task_id in task_ids:
-            task = await self.get_task(task_id)
-            if task:
-                tasks.append(task)
-        
-        return tasks
     
     async def get_tasks_for_expert(self, expert_instance_id: str) -> List[BlackboardTask]:
         """Get all tasks assigned to a specific expert instance"""
         
-        all_tasks = await self._get_all_tasks()
+        all_tasks = await self._get_all_tasks() # This method is not hybrid, so it remains Redis-only
         expert_tasks = []
         
         for task in all_tasks:
@@ -703,26 +841,28 @@ class BlackBoard:
         await self._update_state_statistics(state)
         return state
     
-    async def get_team_performance_metrics(self) -> Dict:
+    async def get_team_performance_metrics(self) -> Dict[str, Any]:
         """Get team performance metrics"""
-        
         state = await self.get_blackboard_state()
-        all_tasks = await self._get_all_tasks()
         
-        metrics = {
-            "total_tasks": len(all_tasks),
+        # Calculate expert utilization
+        expert_utilization = {}
+        experts = await self.get_team_experts()
+        for expert in experts:
+            if expert.max_concurrent_tasks > 0:
+                utilization = expert.current_task_count / expert.max_concurrent_tasks
+                expert_utilization[expert.instance_name] = utilization
+        
+        return {
+            "completion_rate": state.completion_rate,
+            "total_tasks": state.total_tasks,
             "pending_tasks": len(state.pending_tasks),
             "in_progress_tasks": len(state.in_progress_tasks),
             "completed_tasks": len(state.completed_tasks),
             "failed_tasks": len(state.failed_tasks),
-            "completion_rate": state.completion_rate,
-            "average_duration": state.average_duration,
-            "expert_utilization": await self._calculate_expert_utilization(),
-            "task_distribution": await self._calculate_task_distribution(),
-            "performance_trends": await self._calculate_performance_trends()
+            "expert_utilization": expert_utilization,
+            "last_updated": state.last_updated.isoformat()
         }
-        
-        return metrics
     
     # === Notification and Communication ===
     
@@ -915,15 +1055,42 @@ class BlackBoard:
         
         return True
     
-    # === Redis Helper Methods ===
+    # === Redis Helper Methods (保持原有功能) ===
     
     async def _set_redis_value(self, key: str, value: str):
-        """Set value in Redis"""
-        self.redis_client.set(key, value)
+        """Store value in Redis with logging"""
+        try:
+            self.logger.debug(f"Storing Redis key: {key}")
+            result = self.redis_client.set(key, value)
+            if result:
+                self.logger.debug(f"Successfully stored Redis key: {key}")
+            else:
+                raise Exception(f"Failed to store Redis key: {key}")
+        except Exception as e:
+            self.logger.error(
+                f"Failed to store Redis key {key}: {str(e)}",
+                extra={'redis_key': key, 'team_id': self.team_id},
+                exc_info=True
+            )
+            raise
     
     async def _get_redis_value(self, key: str) -> Optional[str]:
-        """Get value from Redis"""
-        return self.redis_client.get(key)
+        """Get value from Redis with logging"""
+        try:
+            self.logger.debug(f"Retrieving Redis key: {key}")
+            value = self.redis_client.get(key)
+            if value is None:
+                self.logger.debug(f"Redis key not found: {key}")
+            else:
+                self.logger.debug(f"Successfully retrieved Redis key: {key}")
+            return value
+        except Exception as e:
+            self.logger.error(
+                f"Failed to retrieve Redis key {key}: {str(e)}",
+                extra={'redis_key': key, 'team_id': self.team_id},
+                exc_info=True
+            )
+            raise
     
     async def _get_keys_by_pattern(self, pattern: str) -> List[str]:
         """Get keys matching pattern"""
@@ -1015,27 +1182,19 @@ class BlackBoard:
         self.logger.info(f"Notification: {title} - {message}")
     
     async def _update_state_statistics(self, state: BlackboardState):
-        """Update statistical information in state"""
-        total_completed = len(state.completed_tasks)
-        total_tasks = state.total_tasks
+        """Update state statistics"""
+        total_tasks = len(state.pending_tasks + state.assigned_tasks + 
+                         state.in_progress_tasks + state.completed_tasks + 
+                         state.failed_tasks)
         
         if total_tasks > 0:
-            state.completion_rate = total_completed / total_tasks
+            completed_count = len(state.completed_tasks)
+            state.completion_rate = completed_count / total_tasks
         else:
             state.completion_rate = 0.0
         
-        # Calculate average duration from completed tasks
-        completed_tasks = await self.get_tasks_by_status(TaskStatus.COMPLETED)
-        durations = []
-        
-        for task in completed_tasks:
-            if task.assignment and task.assignment.actual_duration:
-                durations.append(task.assignment.actual_duration)
-        
-        if durations:
-            state.average_duration = sum(durations) / len(durations)
-        else:
-            state.average_duration = 0.0
+        state.total_tasks = total_tasks
+        state.last_updated = datetime.now()
         
         await self._store_blackboard_state(state)
     

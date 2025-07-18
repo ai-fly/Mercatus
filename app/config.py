@@ -150,10 +150,14 @@ class Config(BaseSettings):
     )
     
     # ========== 数据库配置 ==========
-    database_url: Optional[str] = Field(default=None, description="数据库连接URL")
+    database_url: Optional[str] = Field(
+        default="postgresql+asyncpg://postgres:123456@localhost:5432/mercatus", 
+        description="数据库连接URL"
+    )
     database_pool_size: int = Field(default=10, description="数据库连接池大小")
     database_max_overflow: int = Field(default=20, description="数据库连接池最大溢出")
     database_timeout: int = Field(default=30, description="数据库连接超时时间（秒）")
+    database_echo: bool = Field(default=False, description="是否打印SQL语句")
     
     # ========== 文件存储配置 ==========
     file_storage_path: str = Field(default="./storage", description="文件存储路径")
@@ -208,6 +212,10 @@ class Config(BaseSettings):
     scheduler_max_workers: int = Field(default=4, description="调度器最大工作线程数")
     task_timeout: int = Field(default=600, description="任务超时时间（秒）")
     task_retry_delay: int = Field(default=60, description="任务重试延迟（秒）")
+    
+    # Server configuration
+    host: str = Field(default="0.0.0.0", description="服务器监听地址")
+    port: int = Field(default=8000, description="服务器监听端口")
     
     # ========== 验证器 ==========
     @validator('log_level')

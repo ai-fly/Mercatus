@@ -8,8 +8,7 @@ from uuid import uuid4
 import json
 
 from app.types.blackboard import (
-    BlackboardTask, TaskStatus, TaskPriority, ExpertRole,
-    TaskDependency, DependencyType
+    TaskStatus, ExpertRole
 )
 from app.core.blackboard import BlackBoard
 from app.clients.redis_client import redis_client_instance

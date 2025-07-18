@@ -4,6 +4,7 @@ Mercatus Web Server
 Main entry point for the Mercatus multi-agent content factory system.
 """
 
+import asyncio
 import logging
 import sys
 import os
@@ -11,316 +12,143 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.utils.logging import setup_logger, get_performance_logger, get_business_logger
+from app.utils.logging import setup_logger
 from app.controllers.blackboard_controller import router as blackboard_router
+from app.core.team_manager import TeamManager
+from app.services.hybrid_storage import HybridStorageService
+from app.database.connection import init_database, get_database_session, AsyncSessionLocal
+from app.clients.redis_client import redis_client_instance
+from app.dependencies import set_global_services
 
 # 设置全局日志
-main_logger = setup_logger("mercatus_server", settings.log_level)
-performance_logger = get_performance_logger()
-business_logger = get_business_logger()
+setup_logger()
+logger = logging.getLogger("Server")
+
+# 全局变量
+team_manager: TeamManager = None
+hybrid_storage_service: HybridStorageService = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    global team_manager, hybrid_storage_service
     
-    # 启动阶段
-    startup_time = datetime.now()
-    main_logger.info(
-        "🚀 Starting Mercatus Server",
-        extra={
-            'startup_time': startup_time.isoformat(),
-            'python_version': sys.version,
-            'working_directory': os.getcwd(),
-            'action': 'server_startup_begin'
-        }
-    )
+    # 启动时初始化
+    logger.info("Starting Mercatus server...")
     
     try:
-        # 验证配置
-        await validate_configuration()
+        # Redis 连接已在构造函数中初始化
+        logger.info("Redis connection ready")
         
-        # 初始化系统组件
-        await initialize_system_components()
+        # 初始化数据库
+        await init_database()
+        logger.info("Database initialized")
         
-        startup_duration = (datetime.now() - startup_time).total_seconds()
-        main_logger.info(
-            "✅ Mercatus Server started successfully",
-            extra={
-                'startup_duration': startup_duration,
-                'server_ready': True,
-                'action': 'server_startup_complete'
-            }
-        )
+        # 初始化混合存储服务
+        hybrid_storage_service = HybridStorageService()
+        logger.info("Hybrid storage service initialized")
         
-        # 记录系统启动业务日志
-        business_logger.logger.info(
-            "Mercatus system started",
-            extra={
-                'startup_duration': startup_duration,
-                'system_version': '1.0.0',
-                'action': 'system_startup'
-            }
-        )
+        # 初始化团队管理器
+        team_manager = TeamManager(hybrid_storage_service)
+        logger.info("Team manager initialized")
         
-        yield
+        # 设置全局服务实例
+        set_global_services(team_manager, hybrid_storage_service)
+        
+        logger.info("Mercatus server started successfully")
         
     except Exception as e:
-        main_logger.error(
-            f"❌ Failed to start Mercatus Server: {str(e)}",
-            extra={
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'action': 'server_startup_failed'
-            },
-            exc_info=True
-        )
+        logger.error(f"Failed to start server: {str(e)}")
         raise
     
-    # 关闭阶段
-    shutdown_time = datetime.now()
-    main_logger.info(
-        "🛑 Shutting down Mercatus Server",
-        extra={
-            'shutdown_time': shutdown_time.isoformat(),
-            'action': 'server_shutdown_begin'
-        }
-    )
+    yield
+    
+    # 关闭时清理
+    logger.info("Shutting down Mercatus server...")
     
     try:
-        await cleanup_system_components()
-        
-        shutdown_duration = (datetime.now() - shutdown_time).total_seconds()
-        main_logger.info(
-            "✅ Mercatus Server shutdown complete",
-            extra={
-                'shutdown_duration': shutdown_duration,
-                'action': 'server_shutdown_complete'
-            }
-        )
-        
-    except Exception as e:
-        main_logger.error(
-            f"❌ Error during server shutdown: {str(e)}",
-            extra={
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'action': 'server_shutdown_failed'
-            },
-            exc_info=True
-        )
-
-
-async def validate_configuration():
-    """验证系统配置"""
-    main_logger.info("🔍 Validating system configuration...")
-    
-    config_issues = []
-    
-    # 检查必需的配置
-    if not settings.google_api_key:
-        config_issues.append("GOOGLE_API_KEY not configured")
-    
-    if not settings.redis_url:
-        config_issues.append("REDIS_URL not configured")
-    
-    # 检查数据目录
-    if not os.path.exists("logs"):
-        os.makedirs("logs", exist_ok=True)
-        main_logger.info("📁 Created logs directory")
-    
-    if not os.path.exists("artifacts"):
-        os.makedirs("artifacts", exist_ok=True)
-        main_logger.info("📁 Created artifacts directory")
-    
-    # 记录配置信息
-    main_logger.info(
-        "📋 Configuration summary",
-        extra={
-            'debug_mode': settings.debug,
-            'log_level': settings.log_level.value,
-            'redis_url': settings.redis_url,
-            'max_runtime_hours': settings.max_runtime_hours,
-            'llm_temperature': settings.llm_temperature,
-            'content_quality_threshold': settings.content_quality_threshold,
-            'scheduler_enabled': settings.scheduler_enabled,
-            'action': 'configuration_validated'
-        }
-    )
-    
-    if config_issues:
-        main_logger.warning(
-            f"⚠️ Configuration issues found: {'; '.join(config_issues)}",
-            extra={
-                'config_issues': config_issues,
-                'action': 'configuration_issues'
-            }
-        )
-    else:
-        main_logger.info("✅ Configuration validation passed")
-
-
-async def initialize_system_components():
-    """初始化系统组件"""
-    main_logger.info("🔧 Initializing system components...")
-    
-    with performance_logger.time_operation("system_initialization"):
-        try:
-            # 测试Redis连接
-            from app.clients.redis_client import redis_client_instance
-            redis_client = redis_client_instance.get_redis_client()
-            redis_client.ping()
-            main_logger.info("✅ Redis connection established")
-            
-        except Exception as e:
-            main_logger.error(
-                f"❌ Redis connection failed: {str(e)}",
-                extra={
-                    'redis_url': settings.redis_url,
-                    'error_type': type(e).__name__,
-                    'action': 'redis_connection_failed'
-                },
-                exc_info=True
-            )
-            raise
-        
-        try:
-            # 初始化专家系统
-            from app.experts.plan_expert import PlanExpert
-            from app.experts.content_expert import ContentExpert
-            from app.experts.rewiew_expert import ReviewExpert
-            
-            main_logger.info("✅ Expert classes loaded successfully")
-            
-        except Exception as e:
-            main_logger.error(
-                f"❌ Expert system initialization failed: {str(e)}",
-                extra={
-                    'error_type': type(e).__name__,
-                    'action': 'expert_system_init_failed'
-                },
-                exc_info=True
-            )
-            raise
-        
-        main_logger.info("✅ System components initialized successfully")
-
-
-async def cleanup_system_components():
-    """清理系统组件"""
-    main_logger.info("🧹 Cleaning up system components...")
-    
-    try:
-        # 关闭Redis连接
-        from app.clients.redis_client import redis_client_instance
+        # 关闭 Redis 连接
         redis_client_instance.close()
-        main_logger.info("✅ Redis connections closed")
+        logger.info("Redis connection closed")
+        
+        logger.info("Mercatus server shutdown completed")
         
     except Exception as e:
-        main_logger.error(
-            f"❌ Error closing Redis connections: {str(e)}",
-            extra={'error_type': type(e).__name__, 'action': 'redis_cleanup_failed'},
-            exc_info=True
-        )
-    
-    main_logger.info("✅ System cleanup completed")
+        logger.error(f"Error during shutdown: {str(e)}")
 
 
-# 创建FastAPI应用
+# 创建 FastAPI 应用
 app = FastAPI(
-    title="Mercatus - Multi-Agent Content Factory",
-    description="Intelligent content generation system with multi-agent collaboration",
+    title="Mercatus Content Factory API",
+    description="Multi-tenant team collaboration and content generation platform",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# 添加CORS中间件
+# 添加 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 在生产环境中应该限制为特定域名
+    allow_origins=["*"],  # 在生产环境中应该限制具体域名
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 注册路由
-app.include_router(blackboard_router)
 
-# 根路径
-@app.get("/")
-async def root():
-    """系统根路径 - 健康检查"""
-    return {
-        "message": "Mercatus Multi-Agent Content Factory",
-        "version": "1.0.0",
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "endpoints": {
-            "health": "/health",
-            "api": "/api/v1",
-            "docs": "/docs"
-        }
-    }
+async def get_database_session_dep():
+    """获取数据库会话依赖"""
+    async with get_database_session() as session:
+        yield session
+
+
+# 注册路由
+app.include_router(
+    blackboard_router,
+    prefix="/api/v1"
+)
+
 
 # 健康检查端点
 @app.get("/health")
 async def health_check():
-    """详细的健康检查"""
-    health_status = {
+    """健康检查端点"""
+    return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
+        "service": "Mercatus Content Factory",
         "version": "1.0.0",
-        "components": {}
+        "database": "connected" if hybrid_storage_service else "disconnected",
+        "redis": "connected" if redis_client_instance.is_connected() else "disconnected"
     }
-    
-    try:
-        # 检查Redis连接
-        from app.clients.redis_client import redis_client_instance
-        redis_client = redis_client_instance.get_redis_client()
-        redis_client.ping()
-        health_status["components"]["redis"] = "healthy"
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        health_status["components"]["redis"] = f"unhealthy: {str(e)}"
-        health_status["status"] = "degraded"
-        
-        main_logger.warning(
-            "Redis health check failed",
-            extra={
-                'error_message': str(e),
-                'action': 'health_check_redis_failed'
-            }
-        )
-    
-    # 记录健康检查
-    main_logger.debug(
-        "Health check performed",
-        extra={
-            'health_status': health_status["status"],
-            'action': 'health_check'
-        }
-    )
-    
-    return health_status
+
+
+# 根端点
+@app.get("/")
+async def root():
+    """根端点"""
+    return {
+        "message": "Welcome to Mercatus Content Factory API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health"
+    }
+
 
 # 全局异常处理器
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """全局异常处理"""
-    main_logger.error(
+async def global_exception_handler(request: Request, exc: Exception):
+    """全局异常处理器"""
+    logger.error(
         f"Unhandled exception: {str(exc)}",
         extra={
-            'request_url': str(request.url),
-            'request_method': request.method,
-            'error_type': type(exc).__name__,
-            'action': 'unhandled_exception'
+            'path': request.url.path,
+            'method': request.method,
+            'error': str(exc)
         },
         exc_info=True
     )
@@ -330,28 +158,17 @@ async def global_exception_handler(request, exc):
         content={
             "error": "Internal server error",
             "message": "An unexpected error occurred",
-            "timestamp": datetime.now().isoformat()
+            "detail": str(exc) if settings.debug else "Please try again later"
         }
     )
 
 
 if __name__ == "__main__":
-    # 命令行启动
-    main_logger.info(
-        "🎯 Starting Mercatus server from command line",
-        extra={
-            'host': '0.0.0.0',
-            'port': 8000,
-            'debug': settings.debug,
-            'action': 'cli_startup'
-        }
-    )
-    
+    # 启动服务器
     uvicorn.run(
         "server:app",
-        host="0.0.0.0",
-        port=8000,
+        host=settings.host,
+        port=settings.port,
         reload=settings.debug,
-        log_level=settings.log_level.value.lower(),
-        access_log=True
+        log_level="info" if not settings.debug else "debug"
     )

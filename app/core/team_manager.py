@@ -6,7 +6,8 @@ from uuid import uuid4
 
 from app.types.blackboard import (
     Team, TeamMember, TeamRole, TeamConfiguration, ExpertInstance, ExpertRole,
-    BlackboardTask, TaskStatus, TaskPriority, TaskSearchCriteria, TaskFilter
+    BlackboardTask, TaskStatus, TaskPriority, TaskSearchCriteria, TaskFilter,
+    Platform, Region, ContentType
 )
 from app.core.blackboard import BlackBoard
 from app.experts.expert import ExpertBase
@@ -16,20 +17,25 @@ from app.experts.rewiew_expert import ReviewExpert
 from app.clients.redis_client import redis_client_instance
 from app.config import settings
 from app.utils.logging import get_business_logger, get_performance_logger
+from app.core.continuous_monitor import ContinuousMonitoringService
 
 
 class TeamManager:
     """
     Multi-tenant team management system that coordinates BlackBoard instances,
     expert instances, and team collaboration for the Mercatus content factory.
+    Now uses hybrid storage: PostgreSQL for persistence + Redis for caching.
     """
     
-    def __init__(self):
+    def __init__(self, hybrid_storage_service=None):
         """Initialize TeamManager"""
         self.redis_client = redis_client_instance.get_redis_client()
         self.logger = logging.getLogger("TeamManager")
         self.business_logger = get_business_logger()
         self.performance_logger = get_performance_logger()
+        
+        # 混合存储服务
+        self.hybrid_storage = hybrid_storage_service
         
         self.teams: Dict[str, Team] = {}
         self.blackboards: Dict[str, BlackBoard] = {}
@@ -43,9 +49,9 @@ class TeamManager:
             ExpertRole.EVALUATOR: ReviewExpert
         }
         
-        self.logger.info("TeamManager initialized successfully")
+        self.logger.info("TeamManager initialized with hybrid storage")
     
-    # === Team Management ===
+    # === Team Management (Hybrid Storage) ===
     
     async def create_team(
         self,
@@ -54,63 +60,70 @@ class TeamManager:
         owner_id: str,
         owner_username: str
     ) -> Team:
-        """Create a new team"""
+        """Create a new team with hybrid storage"""
         
         with self.performance_logger.time_operation(
-            "create_team",
+            "team_manager_create_team",
             organization_id=organization_id,
             owner_id=owner_id
         ):
-            self.logger.debug(
-                f"Creating team: {team_name} for organization {organization_id}",
-                extra={
-                    'team_name': team_name,
-                    'organization_id': organization_id,
-                    'user_id': owner_id,
-                    'action': 'team_creation_start'
+            try:
+                # 准备团队数据
+                team_data = {
+                    "team_id": str(uuid4()),
+                    "team_name": team_name,
+                    "organization_id": organization_id,
+                    "owner_id": owner_id,
+                    "is_active": True,
+                    "max_jeff_instances": 1,
+                    "max_monica_instances": 3,
+                    "max_henry_instances": 2,
+                    "auto_scaling_enabled": True,
+                    "jeff_scaling_enabled": False,
+                    "task_queue_limit": 100,
+                    "concurrent_task_limit": 10,
+                    "total_tasks_completed": 0,
+                    "total_content_generated": 0,
+                    "team_performance_score": 0.0
                 }
-            )
-            
-            team = Team(
-                team_id=str(uuid4()),
-                team_name=team_name,
-                organization_id=organization_id,
-                owner_id=owner_id,
-                configuration=TeamConfiguration()
-            )
-            
-            # Add owner as team member
-            owner_member = TeamMember(
-                user_id=owner_id,
-                username=owner_username,
-                role=TeamRole.OWNER
-            )
-            team.members.append(owner_member)
-            
-            # Store team
-            await self._store_team(team)
-            self.teams[team.team_id] = team
-            
-            # Create default expert instances
-            await self._initialize_team_experts(team)
-            
-            # Start automatic monitoring and workflow system
-            await self._start_auto_workflow_system(team)
-            
-            self.logger.info(
-                f"Created team {team.team_id}: {team_name}",
-                extra={
-                    'team_id': team.team_id,
-                    'team_name': team_name,
-                    'organization_id': organization_id,
-                    'owner_id': owner_id,
-                    'member_count': len(team.members),
-                    'expert_count': len(team.expert_instances),
-                    'action': 'team_created'
-                }
-            )
-            
-            return team
+                
+                # 使用混合存储创建团队
+                if self.hybrid_storage:
+                    result = await self.hybrid_storage.create_team(team_data)
+                    if result["status"] == "success":
+                        team = Team(**result["team"])
+                        
+                        # 创建 BlackBoard 实例
+                        blackboard = BlackBoard(team.team_id, self.hybrid_storage)
+                        self.blackboards[team.team_id] = blackboard
+                        
+                        # 初始化专家实例
+                        await self._initialize_expert_instances(team.team_id)
+                        
+                        # 启动监控服务
+                        await self._start_monitoring_service(team.team_id)
+                        
+                        self.logger.info(
+                            f"Team created successfully with hybrid storage: {team.team_id}",
+                            extra={
+                                'team_id': team.team_id,
+                                'team_name': team_name,
+                                'organization_id': organization_id,
+                                'owner_id': owner_id,
+                                'storage_type': 'hybrid'
+                            }
+                        )
+                        
+                        return team
+                    else:
+                        raise Exception(f"Failed to create team: {result['message']}")
+                else:
+                    # 回退到纯 Redis 存储
+                    return await self._create_team_redis_only(team_data)
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to create team: {str(e)}")
+                raise
     
     async def add_team_member(
         self,
@@ -202,33 +215,36 @@ class TeamManager:
         return False
     
     async def get_team(self, team_id: str) -> Optional[Team]:
-        """Get team by ID"""
+        """Get team by ID with hybrid storage"""
         
-        if team_id in self.teams:
-            return self.teams[team_id]
-        
-        # Load from Redis
-        team_data = await self._get_redis_value(f"team:{team_id}")
-        if team_data:
-            team = Team.model_validate_json(team_data)
-            self.teams[team_id] = team
-            return team
-        
-        return None
+        try:
+            if self.hybrid_storage:
+                team_data = await self.hybrid_storage.get_team(team_id)
+                if team_data:
+                    return Team(**team_data)
+                return None
+            else:
+                # 回退到纯 Redis 存储
+                return await self._get_team_redis_only(team_id)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get team {team_id}: {str(e)}")
+            return None
     
     async def get_user_teams(self, user_id: str) -> List[Team]:
-        """Get all teams a user belongs to"""
+        """Get all teams for a user with hybrid storage"""
         
-        all_teams = await self._get_all_teams()
-        user_teams = []
-        
-        for team in all_teams:
-            for member in team.members:
-                if member.user_id == user_id:
-                    user_teams.append(team)
-                    break
-        
-        return user_teams
+        try:
+            if self.hybrid_storage:
+                teams_data = await self.hybrid_storage.get_user_teams(user_id)
+                return [Team(**team_data) for team_data in teams_data]
+            else:
+                # 回退到纯 Redis 存储
+                return await self._get_user_teams_redis_only(user_id)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get user teams: {str(e)}")
+            return []
     
     # === Expert Instance Management ===
     
@@ -238,107 +254,61 @@ class TeamManager:
         expert_role: ExpertRole,
         instance_name: Optional[str] = None,
         max_concurrent_tasks: int = 3,
-        specializations: List[str] = None
+        specializations: List[str] = None,
+        is_team_leader: bool = False
     ) -> Optional[ExpertInstance]:
-        """Create a new expert instance for a team"""
+        """Create a new expert instance with hybrid storage"""
         
-        with self.performance_logger.time_operation(
-            "create_expert_instance",
-            team_id=team_id,
-            expert_role=expert_role.value
-        ):
-            team = await self.get_team(team_id)
-            if not team:
-                self.logger.error(
-                    f"Cannot create expert for team {team_id}: team not found",
-                    extra={'team_id': team_id, 'expert_role': expert_role.value}
-                )
-                return None
+        try:
+            # 准备专家数据
+            expert_data = {
+                "instance_id": str(uuid4()),
+                "team_id": team_id,
+                "expert_role": expert_role.value,
+                "instance_name": instance_name or f"{expert_role.value.title()} {len(self._get_team_experts(team_id, expert_role)) + 1}",
+                "status": "active",
+                "max_concurrent_tasks": max_concurrent_tasks,
+                "current_task_count": 0,
+                "specializations": specializations or [],
+                "performance_metrics": {},
+                "is_team_leader": is_team_leader
+            }
             
-            # Check team limits
-            current_count = len([e for e in team.expert_instances if e.expert_role == expert_role])
-            max_count = self._get_max_instances_for_role(team.configuration, expert_role)
-            
-            # Special check for Jeff (team leader) - only allow one instance
-            if expert_role == ExpertRole.PLANNER and current_count >= 1:
-                self.logger.warning(
-                    f"Team {team_id} already has team leader Jeff - cannot create additional PLANNER instances",
-                    extra={
-                        'team_id': team_id,
-                        'expert_role': expert_role.value,
-                        'current_count': current_count,
-                        'action': 'team_leader_limit_reached'
-                    }
-                )
-                return None
-            
-            if current_count >= max_count:
-                self.logger.warning(
-                    f"Team {team_id} at max {expert_role.value} instances ({max_count})",
-                    extra={
-                        'team_id': team_id,
-                        'expert_role': expert_role.value,
-                        'current_count': current_count,
-                        'max_count': max_count,
-                        'action': 'expert_creation_limit_reached'
-                    }
-                )
-                return None
-            
-            # Generate instance name if not provided
-            if not instance_name:
-                if expert_role == ExpertRole.PLANNER:
-                    instance_name = "Jeff - Team Leader"
+            # 使用混合存储创建专家实例
+            if self.hybrid_storage:
+                result = await self.hybrid_storage.create_expert_instance(expert_data)
+                if result["status"] == "success":
+                    expert = ExpertInstance(**result["expert"])
+                    
+                    # 创建专家实例对象
+                    expert_class = self.expert_classes[expert_role]
+                    expert_instance = expert_class(index=len(self._get_team_experts(team_id, expert_role)) + 1)
+                    
+                    # 存储专家实例
+                    if team_id not in self.expert_instances:
+                        self.expert_instances[team_id] = {}
+                    self.expert_instances[team_id][expert.instance_id] = expert_instance
+                    
+                    self.logger.info(
+                        f"Expert instance created successfully: {expert.instance_id}",
+                        extra={
+                            'team_id': team_id,
+                            'expert_role': expert_role.value,
+                            'instance_name': expert.instance_name,
+                            'storage_type': 'hybrid'
+                        }
+                    )
+                    
+                    return expert
                 else:
-                    instance_name = f"{expert_role.value.title()} {current_count + 1}"
-            
-            # Create expert instance metadata
-            instance = ExpertInstance(
-                instance_id=str(uuid4()),
-                expert_role=expert_role,
-                instance_name=instance_name,
-                status="active",
-                max_concurrent_tasks=max_concurrent_tasks,
-                specializations=specializations or [],
-                is_team_leader=(expert_role == ExpertRole.PLANNER)  # Jeff is the team leader
-            )
-            
-            # Create actual expert object
-            expert_class = self.expert_classes[expert_role]
-            expert_obj = expert_class(index=current_count + 1)
-            
-            # Store in team
-            team.expert_instances.append(instance)
-            team.updated_at = datetime.now()
-            await self._store_team(team)
-            
-            # Store expert instance in memory
-            if team_id not in self.expert_instances:
-                self.expert_instances[team_id] = {}
-            self.expert_instances[team_id][instance.instance_id] = expert_obj
-            
-            # Register with BlackBoard
-            blackboard = self.get_blackboard(team_id)
-            if blackboard:
-                await blackboard.register_expert_instance(
-                    expert_role, instance_name, max_concurrent_tasks, specializations
-                )
-            
-            self.logger.info(
-                f"Created expert instance {instance.instance_id}: {instance_name}",
-                extra={
-                    'team_id': team_id,
-                    'expert_instance_id': instance.instance_id,
-                    'expert_role': expert_role.value,
-                    'instance_name': instance_name,
-                    'max_concurrent_tasks': max_concurrent_tasks,
-                    'specializations': specializations or [],
-                    'total_experts': len(team.expert_instances),
-                    'action': 'expert_instance_created'
-                }
-            )
-            
-            return instance
+                    raise Exception(f"Failed to create expert instance: {result['message']}")
+            else:
+                # 回退到纯 Redis 存储
+                return await self._create_expert_instance_redis_only(expert_data)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to create expert instance: {str(e)}")
+            raise
     
     async def scale_experts(self, team_id: str, expert_role: ExpertRole, target_count: int) -> bool:
         """Scale expert instances for a role to target count"""
@@ -415,7 +385,7 @@ class TeamManager:
         
         # Create if team exists
         if team_id in self.teams:
-            blackboard = BlackBoard(team_id)
+            blackboard = BlackBoard(team_id, self.hybrid_storage)
             self.blackboards[team_id] = blackboard
             return blackboard
         
@@ -452,7 +422,7 @@ class TeamManager:
         return task
     
     async def execute_task(self, team_id: str, task_id: str) -> Dict[str, Any]:
-        """Execute a task using assigned expert instance"""
+        """Execute a task using assigned expert instance with hybrid storage"""
         
         with self.performance_logger.time_operation(
             "execute_task",
@@ -1383,6 +1353,53 @@ class TeamManager:
         
         return teams
     
+    # === Redis-only Fallback Methods ===
+    
+    async def _create_team_redis_only(self, team_data: Dict[str, Any]) -> Team:
+        """Create team using Redis only (fallback)"""
+        team = Team(**team_data)
+        
+        # Store team in Redis
+        team_key = f"team:{team.team_id}"
+        await self._set_redis_value(team_key, team.model_dump_json())
+        
+        # Create BlackBoard instance
+        blackboard = BlackBoard(team.team_id)
+        self.blackboards[team.team_id] = blackboard
+        
+        # Initialize expert instances
+        await self._initialize_expert_instances(team.team_id)
+        
+        # Start monitoring service
+        await self._start_monitoring_service(team.team_id)
+        
+        return team
+    
+    async def _get_team_redis_only(self, team_id: str) -> Optional[Team]:
+        """Get team using Redis only (fallback)"""
+        team_key = f"team:{team_id}"
+        team_data = await self._get_redis_value(team_key)
+        
+        if team_data:
+            return Team.model_validate_json(team_data)
+        return None
+    
+    async def _get_user_teams_redis_only(self, user_id: str) -> List[Team]:
+        """Get user teams using Redis only (fallback)"""
+        # This would need to be implemented based on your Redis data structure
+        # For now, return empty list
+        return []
+    
+    async def _create_expert_instance_redis_only(self, expert_data: Dict[str, Any]) -> ExpertInstance:
+        """Create expert instance using Redis only (fallback)"""
+        expert = ExpertInstance(**expert_data)
+        
+        # Store expert in Redis
+        expert_key = f"expert:{expert.instance_id}"
+        await self._set_redis_value(expert_key, expert.model_dump_json())
+        
+        return expert
+    
     # === Redis Helper Methods ===
     
     async def _set_redis_value(self, key: str, value: str):
@@ -1395,8 +1412,4 @@ class TeamManager:
     
     async def _get_keys_by_pattern(self, pattern: str) -> List[str]:
         """Get keys matching pattern"""
-        return self.redis_client.keys(pattern)
-
-
-# Global team manager instance
-team_manager = TeamManager() 
+        return self.redis_client.keys(pattern) 

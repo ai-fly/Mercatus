@@ -5,731 +5,410 @@ from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from pydantic import BaseModel
 
-from app.manager import BlackboardManager
-from app.types.blackboard import ExpertRole, TaskPriority, TaskStatus
-from app.types.output import Platform, Region, ContentType
-from app.types.context import AppContext
-from app.utils.logging import get_performance_logger, get_business_logger
+from app.core.team_manager import TeamManager
+from app.services.hybrid_storage import HybridStorageService
+from app.dependencies import get_team_manager, get_hybrid_storage_service
+from app.types.blackboard import (
+    Team, TeamMember, TeamRole, ExpertInstance, ExpertRole,
+    BlackboardTask, TaskStatus, TaskPriority, TaskSearchCriteria,
+    Platform, Region, ContentType
+)
+from app.utils.logging import get_business_logger, get_performance_logger
 
-# 创建API日志记录器
-api_logger = logging.getLogger("MercatusAPI")
-performance_logger = get_performance_logger()
+# 创建路由器
+router = APIRouter()
+
+# 日志记录器
+logger = logging.getLogger("BlackboardController")
 business_logger = get_business_logger()
+performance_logger = get_performance_logger()
 
-router = APIRouter(prefix="/api/v1", tags=["BlackBoard"])
 
-# === 依赖注入 ===
-
-def get_blackboard_manager() -> BlackboardManager:
-    """Get BlackBoard manager instance"""
-    context = AppContext()
-    return BlackboardManager(context)
-
-# === 日志中间件函数 ===
-
-def log_api_request(request: Request, body: Any = None) -> str:
-    """记录API请求信息"""
-    request_id = f"req_{int(time.time() * 1000)}"
-    
-    api_logger.info(
-        f"API Request: {request.method} {request.url.path}",
-        extra={
-            'request_id': request_id,
-            'method': request.method,
-            'path': request.url.path,
-            'query_params': dict(request.query_params),
-            'client_ip': request.client.host if request.client else 'unknown',
-            'user_agent': request.headers.get('user-agent', 'unknown'),
-            'content_type': request.headers.get('content-type', 'unknown'),
-            'request_body': body if body else None,
-            'action': 'api_request'
-        }
-    )
-    
-    return request_id
-
-def log_api_response(request_id: str, status_code: int, response_data: Any, execution_time: float):
-    """记录API响应信息"""
-    
-    log_level = logging.INFO
-    if status_code >= 400:
-        log_level = logging.ERROR if status_code >= 500 else logging.WARNING
-    
-    api_logger.log(
-        log_level,
-        f"API Response: {status_code}",
-        extra={
-            'request_id': request_id,
-            'status_code': status_code,
-            'execution_time': execution_time,
-            'response_size': len(str(response_data)) if response_data else 0,
-            'success': status_code < 400,
-            'action': 'api_response'
-        }
-    )
-
-# === 请求/响应模型 ===
-
-class CreateTeamRequest(BaseModel):
-    team_name: str
-    organization_id: str
-    owner_username: str
-
-class CreateTaskRequest(BaseModel):
-    title: str
-    description: str
-    goal: str
-    required_expert_role: ExpertRole
-    priority: TaskPriority = TaskPriority.MEDIUM
-    target_platforms: Optional[List[Platform]] = None
-    target_regions: Optional[List[Region]] = None
-    content_types: Optional[List[ContentType]] = None
-
-class CreateMarketingWorkflowRequest(BaseModel):
-    project_name: str
-    project_description: str
-    target_platforms: List[Platform]
-    target_regions: List[Region]
-    content_types: List[ContentType]
-    priority: TaskPriority = TaskPriority.MEDIUM
-
-class CreateAutoMarketingWorkflowRequest(BaseModel):
-    project_name: str
-    project_description: str
-    target_platforms: List[Platform]
-    target_regions: List[Region]
-    content_types: List[ContentType]
-
-# === API端点 ===
+# === Team Management Endpoints ===
 
 @router.post("/teams", response_model=Dict[str, Any])
 async def create_team(
     request: Request,
-    team_data: CreateTeamRequest,
-    manager: BlackboardManager = Depends(get_blackboard_manager)
+    team_data: dict,
+    team_manager: TeamManager = Depends(get_team_manager),
+    hybrid_storage: HybridStorageService = Depends(get_hybrid_storage_service)
 ):
     """Create a new team"""
-    start_time = time.time()
-    request_id = log_api_request(request, team_data.model_dump())
+    
+    with performance_logger.time_operation(
+        "api_create_team",
+        team_name=team_data.get("team_name"),
+        organization_id=team_data.get("organization_id")
+    ):
+        try:
+            team = await team_manager.create_team(
+                team_name=team_data["team_name"],
+                organization_id=team_data["organization_id"],
+                owner_id=team_data["owner_id"],
+                owner_username=team_data["owner_username"]
+            )
+            
+            business_logger.log_team_created(
+                team.team_id,
+                team.team_name,
+                team.organization_id,
+                team.owner_id
+            )
+            
+            return {
+                "status": "success",
+                "team_id": team.team_id,
+                "message": "Team created successfully"
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to create team: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/teams/{team_id}", response_model=Dict[str, Any])
+async def get_team(
+    request: Request,
+    team_id: str,
+    team_manager: TeamManager = Depends(get_team_manager)
+):
+    """Get team by ID"""
     
     try:
-        with performance_logger.time_operation(
-            "api_create_team",
-            request_id=request_id,
-            organization_id=team_data.organization_id
-        ):
-            # 提取用户ID（在实际实现中应该从认证token中获取）
-            user_id = request.headers.get('X-User-ID', 'anonymous')
-            
-            business_logger.logger.info(
-                f"Creating team request from user {user_id}",
-                extra={
-                    'request_id': request_id,
-                    'user_id': user_id,
-                    'team_name': team_data.team_name,
-                    'organization_id': team_data.organization_id,
-                    'action': 'team_creation_request'
-                }
-            )
-            
-            result = await manager.create_team(
-                team_name=team_data.team_name,
-                organization_id=team_data.organization_id,
-                owner_id=user_id,
-                owner_username=team_data.owner_username
-            )
-            
-            execution_time = time.time() - start_time
-            log_api_response(request_id, 200, result, execution_time)
-            
-            return result
-    
+        team = await team_manager.get_team(team_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        return {
+            "status": "success",
+            "team": team.model_dump()
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        execution_time = time.time() - start_time
-        api_logger.error(
-            f"Team creation failed: {str(e)}",
-            extra={
-                'request_id': request_id,
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'execution_time': execution_time,
-                'action': 'api_error'
-            },
-            exc_info=True
-        )
-        log_api_response(request_id, 500, None, execution_time)
+        logger.error(f"Failed to get team {team_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/users/{user_id}/teams", response_model=Dict[str, Any])
+async def get_user_teams(
+    request: Request,
+    user_id: str,
+    team_manager: TeamManager = Depends(get_team_manager)
+):
+    """Get all teams for a user"""
+    
+    try:
+        teams = await team_manager.get_user_teams(user_id)
+        
+        return {
+            "status": "success",
+            "teams": [team.model_dump() for team in teams],
+            "count": len(teams)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get user teams: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# === Expert Instance Management Endpoints ===
+
+@router.post("/teams/{team_id}/experts", response_model=Dict[str, Any])
+async def create_expert_instance(
+    request: Request,
+    team_id: str,
+    expert_data: dict,
+    team_manager: TeamManager = Depends(get_team_manager)
+):
+    """Create a new expert instance"""
+    
+    try:
+        expert = await team_manager.create_expert_instance(
+            team_id=team_id,
+            expert_role=ExpertRole(expert_data["expert_role"]),
+            instance_name=expert_data.get("instance_name"),
+            max_concurrent_tasks=expert_data.get("max_concurrent_tasks", 3),
+            specializations=expert_data.get("specializations", []),
+            is_team_leader=expert_data.get("is_team_leader", False)
+        )
+        
+        return {
+            "status": "success",
+            "expert_id": expert.instance_id,
+            "message": "Expert instance created successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to create expert instance: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/teams/{team_id}/experts", response_model=Dict[str, Any])
+async def get_team_experts(
+    request: Request,
+    team_id: str,
+    role: Optional[str] = None,
+    team_manager: TeamManager = Depends(get_team_manager)
+):
+    """Get team expert instances"""
+    
+    try:
+        expert_role = ExpertRole(role) if role else None
+        experts = await team_manager.get_team_experts(expert_role)
+        
+        return {
+            "status": "success",
+            "experts": [expert.model_dump() for expert in experts],
+            "count": len(experts)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get team experts: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# === Task Management Endpoints ===
 
 @router.post("/teams/{team_id}/tasks", response_model=Dict[str, Any])
 async def create_task(
     request: Request,
     team_id: str,
-    task_data: CreateTaskRequest,
-    manager: BlackboardManager = Depends(get_blackboard_manager)
+    task_data: dict,
+    team_manager: TeamManager = Depends(get_team_manager)
 ):
-    """Create a new task for a team"""
-    start_time = time.time()
-    request_id = log_api_request(request, {**task_data.model_dump(), "team_id": team_id})
+    """Create a new task"""
     
-    try:
-        with performance_logger.time_operation(
-            "api_create_task",
-            request_id=request_id,
-            team_id=team_id,
-            expert_role=task_data.required_expert_role.value
-        ):
-            user_id = request.headers.get('X-User-ID', 'anonymous')
-            
-            business_logger.logger.info(
-                f"Creating task request from user {user_id}",
-                extra={
-                    'request_id': request_id,
-                    'user_id': user_id,
-                    'team_id': team_id,
-                    'task_title': task_data.title,
-                    'expert_role': task_data.required_expert_role.value,
-                    'priority': task_data.priority.value,
-                    'action': 'task_creation_request'
-                }
-            )
-            
-            result = await manager.submit_custom_task(
+    with performance_logger.time_operation(
+        "api_create_task",
+        team_id=team_id,
+        expert_role=task_data.get("required_expert_role")
+    ):
+        try:
+            result = await team_manager.submit_custom_task(
                 team_id=team_id,
-                title=task_data.title,
-                description=task_data.description,
-                goal=task_data.goal,
-                required_expert_role=task_data.required_expert_role,
-                creator_id=user_id,
-                priority=task_data.priority,
-                target_platforms=task_data.target_platforms or [],
-                target_regions=task_data.target_regions or [],
-                content_types=task_data.content_types or []
+                title=task_data["title"],
+                description=task_data["description"],
+                goal=task_data["goal"],
+                required_expert_role=ExpertRole(task_data["required_expert_role"]),
+                creator_id=task_data["creator_id"],
+                priority=TaskPriority(task_data.get("priority", "medium")),
+                target_platforms=task_data.get("target_platforms", []),
+                target_regions=task_data.get("target_regions", []),
+                content_types=task_data.get("content_types", [])
             )
             
-            execution_time = time.time() - start_time
-            log_api_response(request_id, 200, result, execution_time)
+            if result["status"] == "success":
+                business_logger.log_task_created(
+                    result["task_id"],
+                    task_data["title"],
+                    team_id,
+                    task_data["creator_id"],
+                    task_data.get("priority", "medium")
+                )
             
             return result
+            
+        except Exception as e:
+            logger.error(f"Failed to create task: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/teams/{team_id}/tasks", response_model=Dict[str, Any])
+async def get_team_tasks(
+    request: Request,
+    team_id: str,
+    status: Optional[str] = None,
+    team_manager: TeamManager = Depends()
+):
+    """Get team tasks"""
     
+    try:
+        blackboard = team_manager.get_blackboard(team_id)
+        if not blackboard:
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        if status:
+            tasks = await blackboard.get_tasks_by_status(TaskStatus(status))
+        else:
+            # Get all tasks
+            all_tasks = []
+            for task_status in TaskStatus:
+                tasks = await blackboard.get_tasks_by_status(task_status)
+                all_tasks.extend(tasks)
+            tasks = all_tasks
+        
+        return {
+            "status": "success",
+            "tasks": [task.model_dump() for task in tasks],
+            "count": len(tasks)
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        execution_time = time.time() - start_time
-        api_logger.error(
-            f"Task creation failed: {str(e)}",
-            extra={
-                'request_id': request_id,
-                'team_id': team_id,
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'execution_time': execution_time,
-                'action': 'api_error'
-            },
-            exc_info=True
-        )
-        log_api_response(request_id, 500, None, execution_time)
+        logger.error(f"Failed to get team tasks: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/teams/{team_id}/tasks/{task_id}", response_model=Dict[str, Any])
+async def get_task(
+    request: Request,
+    team_id: str,
+    task_id: str,
+    team_manager: TeamManager = Depends()
+):
+    """Get task by ID"""
+    
+    try:
+        blackboard = team_manager.get_blackboard(team_id)
+        if not blackboard:
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        task = await blackboard.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        return {
+            "status": "success",
+            "task": task.model_dump()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get task: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/teams/{team_id}/tasks/{task_id}/execute", response_model=Dict[str, Any])
 async def execute_task(
     request: Request,
     team_id: str,
     task_id: str,
-    manager: BlackboardManager = Depends(get_blackboard_manager)
+    team_manager: TeamManager = Depends()
 ):
-    """Execute a specific task"""
-    start_time = time.time()
-    request_id = log_api_request(request, {"team_id": team_id, "task_id": task_id})
+    """Execute a task"""
     
-    try:
-        with performance_logger.time_operation(
-            "api_execute_task",
-            request_id=request_id,
-            team_id=team_id,
-            task_id=task_id
-        ):
-            user_id = request.headers.get('X-User-ID', 'anonymous')
-            
-            business_logger.logger.info(
-                f"Task execution request from user {user_id}",
-                extra={
-                    'request_id': request_id,
-                    'user_id': user_id,
-                    'team_id': team_id,
-                    'task_id': task_id,
-                    'action': 'task_execution_request'
-                }
-            )
-            
-            result = await manager.execute_task(team_id, task_id)
-            
-            execution_time = time.time() - start_time
-            
-            # 根据结果状态设置HTTP状态码
-            if result.get("status") == "error":
-                status_code = 400
-                log_api_response(request_id, status_code, result, execution_time)
-                raise HTTPException(status_code=status_code, detail=result.get("message", "Task execution failed"))
-            
-            log_api_response(request_id, 200, result, execution_time)
-            
-            # 记录任务执行结果
-            business_logger.logger.info(
-                f"Task execution completed",
-                extra={
-                    'request_id': request_id,
-                    'user_id': user_id,
-                    'team_id': team_id,
-                    'task_id': task_id,
-                    'execution_status': result.get('status', 'unknown'),
-                    'execution_time': execution_time,
-                    'action': 'task_execution_completed'
-                }
-            )
-            
-            return result
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        execution_time = time.time() - start_time
-        api_logger.error(
-            f"Task execution failed: {str(e)}",
-            extra={
-                'request_id': request_id,
-                'team_id': team_id,
-                'task_id': task_id,
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'execution_time': execution_time,
-                'action': 'api_error'
-            },
-            exc_info=True
-        )
-        log_api_response(request_id, 500, None, execution_time)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/teams/{team_id}/workflows/marketing", response_model=Dict[str, Any])
-async def create_marketing_workflow(
-    request: Request,
-    team_id: str,
-    workflow_data: CreateMarketingWorkflowRequest,
-    manager: BlackboardManager = Depends(get_blackboard_manager)
-):
-    """Create a complete marketing workflow"""
-    start_time = time.time()
-    request_id = log_api_request(request, {**workflow_data.model_dump(), "team_id": team_id})
-    
-    try:
-        with performance_logger.time_operation(
-            "api_create_marketing_workflow",
-            request_id=request_id,
-            team_id=team_id,
-            project_name=workflow_data.project_name
-        ):
-            user_id = request.headers.get('X-User-ID', 'anonymous')
-            
-            business_logger.logger.info(
-                f"Marketing workflow creation request from user {user_id}",
-                extra={
-                    'request_id': request_id,
-                    'user_id': user_id,
-                    'team_id': team_id,
-                    'project_name': workflow_data.project_name,
-                    'target_platforms': [p.value for p in workflow_data.target_platforms],
-                    'target_regions': [r.value for r in workflow_data.target_regions],
-                    'action': 'marketing_workflow_request'
-                }
-            )
-            
-            result = await manager.create_marketing_workflow(
-                team_id=team_id,
-                project_name=workflow_data.project_name,
-                project_description=workflow_data.project_description,
-                target_platforms=workflow_data.target_platforms,
-                target_regions=workflow_data.target_regions,
-                content_types=workflow_data.content_types,
-                creator_id=user_id,
-                priority=workflow_data.priority
-            )
-            
-            execution_time = time.time() - start_time
-            log_api_response(request_id, 200, result, execution_time)
-            
-            return result
-    
-    except Exception as e:
-        execution_time = time.time() - start_time
-        api_logger.error(
-            f"Marketing workflow creation failed: {str(e)}",
-            extra={
-                'request_id': request_id,
-                'team_id': team_id,
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'execution_time': execution_time,
-                'action': 'api_error'
-            },
-            exc_info=True
-        )
-        log_api_response(request_id, 500, None, execution_time)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/teams/{team_id}/analytics", response_model=Dict[str, Any])
-async def get_team_analytics(
-    request: Request,
-    team_id: str,
-    manager: BlackboardManager = Depends(get_blackboard_manager)
-):
-    """Get team analytics and performance metrics"""
-    start_time = time.time()
-    request_id = log_api_request(request, {"team_id": team_id})
-    
-    try:
-        with performance_logger.time_operation(
-            "api_get_team_analytics",
-            request_id=request_id,
-            team_id=team_id
-        ):
-            result = await manager.get_team_analytics(team_id)
-            
-            execution_time = time.time() - start_time
-            log_api_response(request_id, 200, result, execution_time)
-            
-            return result
-    
-    except Exception as e:
-        execution_time = time.time() - start_time
-        api_logger.error(
-            f"Get team analytics failed: {str(e)}",
-            extra={
-                'request_id': request_id,
-                'team_id': team_id,
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'execution_time': execution_time,
-                'action': 'api_error'
-            },
-            exc_info=True
-        )
-        log_api_response(request_id, 500, None, execution_time)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/teams/{team_id}/workflow-status", response_model=Dict[str, Any])
-async def get_team_workflow_status(
-    request: Request,
-    team_id: str,
-    manager: BlackboardManager = Depends(get_blackboard_manager)
-):
-    """Get comprehensive workflow status for a team"""
-    start_time = time.time()
-    request_id = log_api_request(request, {"team_id": team_id})
-    
-    try:
-        with performance_logger.time_operation(
-            "api_workflow_status",
-            request_id=request_id,
-            team_id=team_id
-        ):
-            user_id = request.headers.get('X-User-ID', 'anonymous')
-            
-            business_logger.logger.info(
-                f"Workflow status request from user {user_id}",
-                extra={
-                    'request_id': request_id,
-                    'user_id': user_id,
-                    'team_id': team_id,
-                    'action': 'workflow_status_request'
-                }
-            )
-            
-            from app.core.team_manager import team_manager
-            result = await team_manager.get_team_workflow_status(team_id)
-            
-            execution_time = time.time() - start_time
-            log_api_response(request_id, 200, result, execution_time)
-            
+    with performance_logger.time_operation(
+        "api_execute_task",
+        team_id=team_id,
+        task_id=task_id
+    ):
+        try:
+            result = await team_manager.execute_task(team_id, task_id)
             return result
             
-    except Exception as e:
-        execution_time = time.time() - start_time
-        error_response = {"status": "error", "error": str(e)}
-        log_api_response(request_id, 500, error_response, execution_time)
-        raise HTTPException(status_code=500, detail=str(e))
+        except Exception as e:
+            logger.error(f"Failed to execute task: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/teams/{team_id}/workflows/auto-marketing", response_model=Dict[str, Any])
-async def create_auto_marketing_workflow(
-    request: Request,
-    team_id: str,
-    workflow_data: CreateAutoMarketingWorkflowRequest,
-    manager: BlackboardManager = Depends(get_blackboard_manager)
-):
-    """Create and start an automated marketing workflow"""
-    start_time = time.time()
-    request_id = log_api_request(request, workflow_data.model_dump())
-    
-    try:
-        with performance_logger.time_operation(
-            "api_create_auto_marketing_workflow",
-            request_id=request_id,
-            team_id=team_id
-        ):
-            user_id = request.headers.get('X-User-ID', 'anonymous')
-            
-            business_logger.logger.info(
-                f"Creating auto marketing workflow for team {team_id}",
-                extra={
-                    'request_id': request_id,
-                    'user_id': user_id,
-                    'team_id': team_id,
-                    'project_name': workflow_data.project_name,
-                    'action': 'auto_marketing_workflow_request'
-                }
-            )
-            
-            result = await manager.create_auto_marketing_workflow(
-                team_id=team_id,
-                project_name=workflow_data.project_name,
-                project_description=workflow_data.project_description,
-                target_platforms=workflow_data.target_platforms,
-                target_regions=workflow_data.target_regions,
-                content_types=workflow_data.content_types,
-                creator_id=user_id
-            )
-            
-            execution_time = time.time() - start_time
-            log_api_response(request_id, 200, result, execution_time)
-            
-            return result
-    
-    except Exception as e:
-        execution_time = time.time() - start_time
-        api_logger.error(
-            f"Auto marketing workflow creation failed: {str(e)}",
-            extra={
-                'request_id': request_id,
-                'team_id': team_id,
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'execution_time': execution_time,
-                'action': 'api_error'
-            },
-            exc_info=True
-        )
-        log_api_response(request_id, 500, None, execution_time)
-        raise HTTPException(status_code=500, detail=str(e))
-
+# === Planning and Replanning Endpoints ===
 
 @router.post("/teams/{team_id}/planning/user-suggestion", response_model=Dict[str, Any])
 async def submit_user_suggestion_replanning(
     request: Request,
     team_id: str,
     suggestion_data: dict,
-    manager: BlackboardManager = Depends(get_blackboard_manager)
+    team_manager: TeamManager = Depends()
 ):
     """Submit user suggestion for task replanning"""
-    start_time = time.time()
-    request_id = log_api_request(request, suggestion_data)
     
     try:
-        with performance_logger.time_operation(
-            "api_user_suggestion_replanning",
-            request_id=request_id,
-            team_id=team_id
-        ):
-            user_id = request.headers.get('X-User-ID', 'anonymous')
-            
-            # Extract suggestion data
-            suggestion_content = suggestion_data.get('suggestion_content', '')
-            target_task_ids = suggestion_data.get('target_task_ids', None)
-            
-            if not suggestion_content:
-                raise HTTPException(
-                    status_code=400, 
-                    detail="suggestion_content is required"
-                )
-            
-            business_logger.logger.info(
-                f"User suggestion replanning request for team {team_id}",
-                extra={
-                    'request_id': request_id,
-                    'user_id': user_id,
-                    'team_id': team_id,
-                    'suggestion_content': suggestion_content,
-                    'target_task_count': len(target_task_ids) if target_task_ids else 0,
-                    'action': 'user_suggestion_replanning_request'
-                }
-            )
-            
-            result = await manager.team_manager.handle_user_suggestion_replanning(
-                team_id=team_id,
-                user_id=user_id,
-                suggestion_content=suggestion_content,
-                target_task_ids=target_task_ids
-            )
-            
-            execution_time = time.time() - start_time
-            
-            # Determine HTTP status based on result
-            if result.get("status") == "error":
-                status_code = 400
-            elif result.get("status") == "warning":
-                status_code = 200  # Still successful but with warnings
-            else:
-                status_code = 200
-            
-            log_api_response(request_id, status_code, result, execution_time)
-            
-            return result
-    
+        blackboard = team_manager.get_blackboard(team_id)
+        if not blackboard:
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        # Create replanning task
+        replanning_task = await blackboard.create_task(
+            title=f"Replanning based on user suggestion: {suggestion_data.get('suggestion_content', '')[:50]}...",
+            description=f"User suggestion: {suggestion_data.get('suggestion_content', '')}",
+            goal="Replan tasks based on user feedback",
+            required_expert_role=ExpertRole.PLANNER,
+            creator_id=suggestion_data.get("user_id", "system"),
+            priority=TaskPriority.HIGH,
+            metadata={
+                "planning_trigger": "user_suggestion",
+                "original_suggestion": suggestion_data.get("suggestion_content"),
+                "target_task_ids": suggestion_data.get("target_task_ids", [])
+            }
+        )
+        
+        business_logger.log_replanning_triggered(
+            replanning_task.task_id,
+            team_id,
+            "user_suggestion",
+            suggestion_data.get("user_id", "system")
+        )
+        
+        return {
+            "status": "success",
+            "replanning_task_id": replanning_task.task_id,
+            "message": "Replanning task created successfully"
+        }
+        
     except HTTPException:
         raise
     except Exception as e:
-        execution_time = time.time() - start_time
-        api_logger.error(
-            f"User suggestion replanning failed: {str(e)}",
-            extra={
-                'request_id': request_id,
-                'team_id': team_id,
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'execution_time': execution_time,
-                'action': 'api_error'
-            },
-            exc_info=True
-        )
-        log_api_response(request_id, 500, None, execution_time)
+        logger.error(f"Failed to submit user suggestion: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/teams/{team_id}/monitoring/dashboard", response_model=Dict[str, Any])
-async def get_monitoring_dashboard(
-    request: Request,
-    team_id: str
-):
-    """Get real-time monitoring dashboard for a team"""
-    start_time = time.time()
-    request_id = log_api_request(request, {"team_id": team_id})
-    
-    try:
-        with performance_logger.time_operation(
-            "api_monitoring_dashboard",
-            request_id=request_id,
-            team_id=team_id
-        ):
-            user_id = request.headers.get('X-User-ID', 'anonymous')
-            
-            business_logger.logger.info(
-                f"Monitoring dashboard request from user {user_id}",
-                extra={
-                    'request_id': request_id,
-                    'user_id': user_id,
-                    'team_id': team_id,
-                    'action': 'monitoring_dashboard_request'
-                }
-            )
-            
-            from app.core.team_manager import team_manager
-            monitoring_service = team_manager.get_monitoring_service(team_id)
-            
-            if not monitoring_service:
-                return {
-                    "status": "no_monitoring",
-                    "message": "Monitoring service not found for this team",
-                    "team_id": team_id
-                }
-            
-            result = await monitoring_service.get_monitoring_dashboard()
-            
-            execution_time = time.time() - start_time
-            log_api_response(request_id, 200, result, execution_time)
-            
-            return result
-            
-    except Exception as e:
-        execution_time = time.time() - start_time
-        error_response = {"status": "error", "error": str(e)}
-        log_api_response(request_id, 500, error_response, execution_time)
-        raise HTTPException(status_code=500, detail=str(e))
+# === Team Performance Endpoints ===
 
-
-@router.post("/teams/{team_id}/planning/user-suggestion", response_model=Dict[str, Any])
-async def submit_user_suggestion_replanning(
+@router.get("/teams/{team_id}/performance", response_model=Dict[str, Any])
+async def get_team_performance(
     request: Request,
     team_id: str,
-    suggestion_data: dict,
-    manager: BlackboardManager = Depends(get_blackboard_manager)
+    team_manager: TeamManager = Depends()
 ):
-    """Submit user suggestion for task replanning"""
-    start_time = time.time()
-    request_id = log_api_request(request, suggestion_data)
+    """Get team performance metrics"""
     
     try:
-        with performance_logger.time_operation(
-            "api_user_suggestion_replanning",
-            request_id=request_id,
-            team_id=team_id
-        ):
-            user_id = request.headers.get('X-User-ID', 'anonymous')
-            
-            # Extract suggestion data
-            suggestion_content = suggestion_data.get('suggestion_content', '')
-            target_task_ids = suggestion_data.get('target_task_ids', None)
-            
-            if not suggestion_content:
-                raise HTTPException(
-                    status_code=400, 
-                    detail="suggestion_content is required"
-                )
-            
-            business_logger.logger.info(
-                f"User suggestion replanning request for team {team_id}",
-                extra={
-                    'request_id': request_id,
-                    'user_id': user_id,
-                    'team_id': team_id,
-                    'suggestion_content': suggestion_content,
-                    'target_task_count': len(target_task_ids) if target_task_ids else 0,
-                    'action': 'user_suggestion_replanning_request'
-                }
-            )
-            
-            result = await manager.team_manager.handle_user_suggestion_replanning(
-                team_id=team_id,
-                user_id=user_id,
-                suggestion_content=suggestion_content,
-                target_task_ids=target_task_ids
-            )
-            
-            execution_time = time.time() - start_time
-            
-            # Determine HTTP status based on result
-            if result.get("status") == "error":
-                status_code = 400
-            elif result.get("status") == "warning":
-                status_code = 200  # Still successful but with warnings
-            else:
-                status_code = 200
-            
-            log_api_response(request_id, status_code, result, execution_time)
-            
-            return result
-    
+        blackboard = team_manager.get_blackboard(team_id)
+        if not blackboard:
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        metrics = await blackboard.get_team_performance_metrics()
+        
+        return {
+            "status": "success",
+            "metrics": metrics
+        }
+        
     except HTTPException:
         raise
     except Exception as e:
-        execution_time = time.time() - start_time
-        api_logger.error(
-            f"User suggestion replanning failed: {str(e)}",
-            extra={
-                'request_id': request_id,
-                'team_id': team_id,
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'execution_time': execution_time,
-                'action': 'api_error'
-            },
-            exc_info=True
-        )
-        log_api_response(request_id, 500, None, execution_time)
+        logger.error(f"Failed to get team performance: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# === BlackBoard State Endpoints ===
+
+@router.get("/teams/{team_id}/blackboard/state", response_model=Dict[str, Any])
+async def get_blackboard_state(
+    request: Request,
+    team_id: str,
+    team_manager: TeamManager = Depends()
+):
+    """Get BlackBoard state"""
+    
+    try:
+        blackboard = team_manager.get_blackboard(team_id)
+        if not blackboard:
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        state = await blackboard.get_blackboard_state()
+        
+        return {
+            "status": "success",
+            "state": state.model_dump()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get BlackBoard state: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e)) 

@@ -49,6 +49,13 @@ class PlanningTriggerType(str, Enum):
     USER_SUGGESTION = "user_suggestion"     # User-triggered replanning
 
 
+class DependencyType(str, Enum):
+    """Dependency type enumeration"""
+    BLOCKING = "blocking"      # Must complete before dependent task
+    SOFT = "soft"              # Preferred but not required
+    OPTIONAL = "optional"      # Nice to have
+
+
 # === Expert Instance and Assignment Types ===
 
 class ExpertInstance(BaseModel):

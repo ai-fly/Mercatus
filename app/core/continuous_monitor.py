@@ -487,13 +487,13 @@ class ContinuousMonitoringService:
             task = await blackboard.get_task(task_id)
             if task:
                 # 检查重试次数
-                retry_count = task.metadata.context_data.get('retry_count', 0)
-                max_retries = task.metadata.context_data.get('max_retries', 3)
+                retry_count = task.task_metadata.context_data.get('retry_count', 0)
+                max_retries = task.task_metadata.context_data.get('max_retries', 3)
                 
                 if retry_count < max_retries:
                     # 重置任务状态并重试
                     task.status = TaskStatus.PENDING
-                    task.metadata.context_data['retry_count'] = retry_count + 1
+                    task.task_metadata.context_data['retry_count'] = retry_count + 1
                     await blackboard._store_task(task)
                     
                     self.metrics.tasks_retried += 1
