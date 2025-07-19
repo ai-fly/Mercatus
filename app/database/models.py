@@ -23,8 +23,8 @@ class User(Base):
     __tablename__ = "users"
     
     user_id = Column(String(50), primary_key=True, index=True)
-    username = Column(String(100), unique=True, nullable=False, index=True)
-    email = Column(String(255), unique=True, nullable=True, index=True)
+    username = Column(String(100), unique=False, nullable=True, index=True)  # 用户名可选，仅用于展示
+    email = Column(String(255), unique=True, nullable=False, index=True)  # 邮箱唯一且必填，OAuth登录主键
     organization_id = Column(String(100), nullable=True, index=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -37,6 +37,7 @@ class User(Base):
     __table_args__ = (
         Index('idx_users_organization', 'organization_id'),
         Index('idx_users_created_at', 'created_at'),
+        UniqueConstraint('email', name='uq_users_email'),
     )
 
 

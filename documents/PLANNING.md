@@ -6,6 +6,7 @@ Mercatus Content Factory 是一个基于多智能体协作的内容生成平台�
 
 ### 1.1 核心特性
 
+- **Google邮箱OAuth登录**：支持Google邮箱授权登录，邮箱为唯一账号标识，自动注册新用户
 - **多智能体协作**：Jeff（规划专家）、Monica（执行专家）、Henry（评估专家）
 - **BlackBoard 架构**：共享任务状态和协作信息
 - **多租户支持**：支持多个团队独立工作
@@ -157,12 +158,13 @@ class HybridStorageService:
 class User(Base):
     user_id: str          # 用户唯一标识
     username: str         # 用户名
-    email: str           # 邮箱
+    email: str           # 邮箱（唯一，OAuth登录主键）
     organization_id: str # 组织ID
     is_active: bool      # 是否激活
     created_at: datetime # 创建时间
     updated_at: datetime # 更新时间
 ```
+> 说明：邮箱为唯一账号标识，支持Google OAuth登录，若邮箱不存在则自动注册。
 
 #### 3.1.2 Team (团队)
 ```python
@@ -241,6 +243,9 @@ BlackboardTask (1) ──── (N) TaskEvent
 
 ## 4. API 设计
 
+### 4.0 用户认证 API
+- `POST /api/v1/auth/google-login`：Google邮箱OAuth登录，自动注册新用户，返回JWT令牌
+
 ### 4.1 团队管理 API
 
 #### 4.1.1 创建团队
@@ -268,19 +273,8 @@ GET /api/v1/teams/{team_id}
 
 ### 4.2 专家管理 API
 
-#### 4.2.1 创建专家实例
-```http
-POST /api/v1/teams/{team_id}/experts
-Content-Type: application/json
-
-{
-    "expert_role": "executor",
-    "instance_name": "Monica - Content Creator",
-    "max_concurrent_tasks": 3,
-    "specializations": ["social_media", "blog_writing"],
-    "is_team_leader": false
-}
-```
+> 默认专家实例（Jeff、Monica、Henry）会在团队创建时自动初始化，无需单独调用接口。
+> 团队扩容/添加额外专家实例的接口已移除，所有专家实例均在团队创建时自动生成。
 
 #### 4.2.2 获取团队专家
 ```http
@@ -351,7 +345,7 @@ GET /api/v1/teams/{team_id}/blackboard/state
    - 验证用户权限
    - 创建团队记录（PostgreSQL）
    - 初始化 BlackBoard 实例
-   - 创建默认专家实例（Jeff、Monica、Henry）
+   - 创建默认专家实例（Jeff、Monica、Henry）【自动完成】
    - 启动监控服务
 
 2. **专家实例初始化**

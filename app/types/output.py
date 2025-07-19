@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from enum import Enum
 from typing import Optional, Dict, List
 
@@ -263,3 +263,13 @@ class ExecutorResult(AgentExecutorResult):
     """
     Marketing strategy expert task execution result
     """
+
+
+class GoogleOAuthLoginRequest(BaseModel):
+    token: str  # Google OAuth access token or ID token
+
+class AuthTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: Optional[int] = None
+    user_email: EmailStr

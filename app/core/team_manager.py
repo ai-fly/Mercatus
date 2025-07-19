@@ -60,7 +60,7 @@ class TeamManager:
         owner_id: str,
         owner_username: str
     ) -> Team:
-        """Create a new team with hybrid storage"""
+        """Create a new team with hybrid storage. Default experts (Jeff, Monica, Henry) are automatically created for each team."""
         
         with self.performance_logger.time_operation(
             "team_manager_create_team",
@@ -97,7 +97,7 @@ class TeamManager:
                         blackboard = BlackBoard(team.team_id, self.hybrid_storage)
                         self.blackboards[team.team_id] = blackboard
                         
-                        # 初始化专家实例
+                        # 初始化专家实例（Jeff, Monica, Henry）——团队创建时自动完成
                         await self._initialize_expert_instances(team.team_id)
                         
                         # 启动监控服务
@@ -257,7 +257,7 @@ class TeamManager:
         specializations: List[str] = None,
         is_team_leader: bool = False
     ) -> Optional[ExpertInstance]:
-        """Create a new expert instance with hybrid storage"""
+        """Create an additional expert instance for scaling. Not used for default expert creation at team creation."""
         
         try:
             # 准备专家数据

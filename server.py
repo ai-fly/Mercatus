@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.utils.logging import setup_logger
 from app.controllers.blackboard_controller import router as blackboard_router
+from app.controllers.auth_controller import router as auth_router
 from app.core.team_manager import TeamManager
 from app.services.hybrid_storage import HybridStorageService
 from app.database.connection import init_database, get_database_session, AsyncSessionLocal
@@ -110,6 +111,11 @@ async def get_database_session_dep():
 # 注册路由
 app.include_router(
     blackboard_router,
+    prefix="/api/v1"
+)
+
+app.include_router(
+    auth_router,
     prefix="/api/v1"
 )
 

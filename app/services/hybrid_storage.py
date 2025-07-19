@@ -9,6 +9,7 @@ import logging
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
+import uuid
 
 from app.database.repositories import (
     UserRepository, TeamRepository, TaskRepository, 
@@ -92,6 +93,30 @@ class HybridStorageService:
         except Exception as e:
             self.logger.error(f"Failed to get user: {str(e)}")
             return None
+    
+    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """根据邮箱获取用户信息"""
+        try:
+            async with AsyncSessionLocal() as session:
+                user_repo = UserRepository(session)
+                user = await user_repo.get_user_by_email(email)
+                if user:
+                    return self._user_to_dict(user)
+                return None
+        except Exception as e:
+            self.logger.error(f"Failed to get user by email: {str(e)}")
+            return None
+
+    async def get_or_create_user_by_email(self, email: str, username: Optional[str] = None, organization_id: Optional[str] = None) -> Dict[str, Any]:
+        """根据邮箱获取用户，不存在则自动注册"""
+        user = await self.get_user_by_email(email)
+        if user:
+            return {"status": "success", "user": user, "message": "User exists"}
+        # 自动注册
+        user_id = str(uuid.uuid4())
+        username = username or email.split('@')[0]
+        created = await self.create_user(user_id, username, email, organization_id)
+        return created
     
     # === 团队管理 ===
     

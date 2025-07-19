@@ -368,3 +368,19 @@ Mercatus/
 - [ ] 支持多语言和多文化
 - [ ] 实现完全自动化
 - [ ] 扩展到其他行业
+
+## 用户认证与Google邮箱登录
+
+系统支持Google邮箱OAuth授权登录：
+- 账号以邮箱为唯一标识
+- 若邮箱不存在则自动注册
+- 登录成功后返回JWT令牌
+
+### 环境变量配置
+- `GOOGLE_CLIENT_ID`：Google OAuth客户端ID
+- `JWT_SECRET`：用于签发JWT的密钥
+
+### API
+- `POST /api/v1/auth/google-login`
+  - 请求体: `{ "token": "<Google OAuth id_token>" }`
+  - 返回: `{ "access_token": "...", "token_type": "bearer", "user_email": "..." }`

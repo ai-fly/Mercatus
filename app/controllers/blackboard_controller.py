@@ -115,35 +115,7 @@ async def get_user_teams(
 
 # === Expert Instance Management Endpoints ===
 
-@router.post("/teams/{team_id}/experts", response_model=Dict[str, Any])
-async def create_expert_instance(
-    request: Request,
-    team_id: str,
-    expert_data: dict,
-    team_manager: TeamManager = Depends(get_team_manager)
-):
-    """Create a new expert instance"""
-    
-    try:
-        expert = await team_manager.create_expert_instance(
-            team_id=team_id,
-            expert_role=ExpertRole(expert_data["expert_role"]),
-            instance_name=expert_data.get("instance_name"),
-            max_concurrent_tasks=expert_data.get("max_concurrent_tasks", 3),
-            specializations=expert_data.get("specializations", []),
-            is_team_leader=expert_data.get("is_team_leader", False)
-        )
-        
-        return {
-            "status": "success",
-            "expert_id": expert.instance_id,
-            "message": "Expert instance created successfully"
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to create expert instance: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+# 专家实例的创建已在团队创建时自动完成，无需单独接口。
 
 @router.get("/teams/{team_id}/experts", response_model=Dict[str, Any])
 async def get_team_experts(

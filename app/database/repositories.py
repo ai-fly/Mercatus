@@ -53,6 +53,13 @@ class UserRepository:
         )
         return result.scalar_one_or_none()
     
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """根据邮箱获取用户"""
+        result = await self.session.execute(
+            select(User).where(User.email == email)
+        )
+        return result.scalar_one_or_none()
+    
     async def get_user_teams(self, user_id: str) -> List[Team]:
         """获取用户的所有团队"""
         result = await self.session.execute(
