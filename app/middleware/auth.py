@@ -12,7 +12,7 @@ JWT_SECRET = os.getenv(
     "JWT_SECRET",
     "c95cbe5766b2e01994e4ed75b9cadcbb7201d30cf3fd7bf9113addbf3da88379",
 )
-JWT_ALGORITHM = "RS256"
+JWT_ALGORITHM = "HS256"
 
 class JWTAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):

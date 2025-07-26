@@ -1,12 +1,13 @@
 import logging
 from fastapi import APIRouter, HTTPException, Depends, Request
-from fastapi.responses import RedirectResponse
 from pydantic import EmailStr
 from app.services.hybrid_storage import HybridStorageService
 from app.dependencies import get_hybrid_storage_service
 from app.types.output import AuthTokenResponse
+from app.types.auth import GoogleLoginRequest
 from jose import jwt
-from authlib.integrations.starlette_client import OAuth
+from google.oauth2 import id_token
+from google.auth.transport import requests
 import os
 from datetime import datetime, timedelta
 
@@ -16,69 +17,73 @@ logger = logging.getLogger("AuthController")
 
 # Google 配置
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 JWT_SECRET = os.getenv("JWT_SECRET", "c95cbe5766b2e01994e4ed75b9cadcbb7201d30cf3fd7bf9113addbf3da88379")
-JWT_ALGORITHM = "RS256"  # 与JWT中间件保持一致
+JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# 配置OAuth
-oauth = OAuth()
-oauth.register(
-    name='google',
-    client_id=GOOGLE_CLIENT_ID,
-    client_secret=GOOGLE_CLIENT_SECRET,
-    access_token_url='https://oauth2.googleapis.com/token',
-    authorize_url='https://accounts.google.com/o/oauth2/v2/auth',
-    jwks_uri='https://www.googleapis.com/oauth2/v3/certs',
-    client_kwargs={
-        'scope': 'openid email profile'
-    }
-)
 
-@router.get("/auth/google/login")
-async def login_via_google(request: Request):
-    """
-    Redirects to Google's authentication page.
-    """
-    redirect_uri = request.url_for('auth_via_google')
-    return await oauth.google.authorize_redirect(request, redirect_uri)
-
-
-@router.get("/auth/google/callback", response_model=AuthTokenResponse)
+@router.post("/auth/google/callback", response_model=AuthTokenResponse)
 async def auth_via_google(
-    request: Request,
-    hybrid_storage: HybridStorageService = Depends(get_hybrid_storage_service)
+    login_data: GoogleLoginRequest,
+    hybrid_storage: HybridStorageService = Depends(get_hybrid_storage_service),
 ):
     """
-    Handles the callback from Google, creates/logs in the user, and returns a JWT token.
+    Validates a Google ID token, creates/logs in the user with full profile details,
+    and returns a JWT token.
     """
     try:
-        token_data = await oauth.google.authorize_access_token(request)
-    except Exception as e:
-        logger.error(f"Could not authorize access token: {e}")
-        raise HTTPException(status_code=401, detail="Could not authorize access token")
+        # Validate the ID token using the google-auth library
+        idinfo = id_token.verify_oauth2_token(
+            login_data.id_token, requests.Request(), GOOGLE_CLIENT_ID
+        )
 
-    user_info = await oauth.google.parse_id_token(request, token_data)
-    email = user_info.get("email")
+        # Security check: ensure the email in the validated token matches the one in the profile.
+        if idinfo.get("email") != login_data.profile.email:
+            raise HTTPException(
+                status_code=400, detail="Token email does not match profile email"
+            )
 
-    if not email:
-        raise HTTPException(status_code=400, detail="No email found in Google token")
+    except ValueError as e:
+        logger.error(f"Could not validate ID token: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail="Could not validate ID token. It may be expired or invalid.",
+        )
 
-    user_result = await hybrid_storage.get_or_create_user_by_email(email=email)
+    # Now that the token is validated, you can safely use the profile data.
+    profile = login_data.profile
+    
+    # You should adapt your user creation logic to accept the new details.
+    # For example, create a dictionary with the full user data.
+    user_details_to_save = {
+        "email": profile.email,
+        "full_name": profile.name,
+        "picture_url": profile.picture,
+        "given_name": profile.given_name,
+        "family_name": profile.family_name,
+    }
+    
+    # Pass the full user details to your database service.
+    # (You may need to update get_or_create_user_by_email to handle these new fields)
+    user_result = await hybrid_storage.get_or_create_user_by_email(user_details_to_save)
+    
     if user_result.get("status") != "success":
         logger.error(f"User creation/retrieval failed: {user_result}")
         raise HTTPException(status_code=500, detail="User creation or retrieval failed")
-
+    
     user = user_result["user"]
     
+    # Create the JWT payload. You can add more user info here if needed.
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
-        "sub": email,
-        "email": email,
+        "sub": profile.email,
+        "email": profile.email,
         "user_id": user["user_id"],
-        "exp": expire
+        "name": profile.name,
+        "picture": profile.picture,
+        "exp": expire,
     }
     
     access_token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
     
-    return AuthTokenResponse(access_token=access_token, user_email=email) 
+    return AuthTokenResponse(access_token=access_token, user_email=profile.email)
