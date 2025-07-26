@@ -16,6 +16,7 @@ from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.middleware.auth import JWTAuthMiddleware
 from app.config import settings
 from app.utils.logging import setup_logger
 from app.controllers.blackboard_controller import router as blackboard_router
@@ -100,6 +101,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 添加 JWT 认证中间件
+app.add_middleware(JWTAuthMiddleware)
 
 
 async def get_database_session_dep():
