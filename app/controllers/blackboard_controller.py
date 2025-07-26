@@ -38,12 +38,11 @@ async def create_team(
     with performance_logger.time_operation(
         "api_create_team",
         team_name=team_data.get("team_name"),
-        organization_id=team_data.get("organization_id")
     ):
         try:
             team = await team_manager.create_team(
                 team_name=team_data["team_name"],
-                organization_id=team_data["organization_id"],
+                description=team_data.get("description"),
                 owner_id=team_data["owner_id"],
                 owner_username=team_data["owner_username"]
             )
@@ -51,7 +50,6 @@ async def create_team(
             business_logger.log_team_created(
                 team.team_id,
                 team.team_name,
-                team.organization_id,
                 team.owner_id
             )
             

@@ -27,13 +27,12 @@ class UserRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
     
-    async def create_user(self, user_id: str, username: str, email: str = None, organization_id: str = None) -> User:
+    async def create_user(self, user_id: str, username: str, email: str = None) -> User:
         """创建用户"""
         user = User(
             user_id=user_id,
             username=username,
-            email=email,
-            organization_id=organization_id
+            email=email
         )
         self.session.add(user)
         await self.session.flush()
@@ -99,16 +98,6 @@ class TeamRepository:
             ).where(Team.team_id == team_id)
         )
         return result.scalar_one_or_none()
-    
-    async def get_teams_by_organization(self, organization_id: str) -> List[Team]:
-        """获取组织的所有团队"""
-        result = await self.session.execute(
-            select(Team).options(
-                selectinload(Team.members),
-                selectinload(Team.expert_instances)
-            ).where(Team.organization_id == organization_id)
-        )
-        return result.scalars().all()
     
     async def update_team(self, team_id: str, update_data: Dict[str, Any]) -> Optional[Team]:
         """更新团队"""

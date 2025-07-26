@@ -46,7 +46,7 @@ class HybridStorageService:
         
     # === 用户管理 ===
     
-    async def create_user(self, user_id: str, username: str, email: str = None, organization_id: str = None) -> Dict[str, Any]:
+    async def create_user(self, user_id: str, username: str, email: str = None) -> Dict[str, Any]:
         """创建用户"""
         async with AsyncSessionLocal() as session:
             try:
@@ -58,7 +58,7 @@ class HybridStorageService:
                     return {"status": "error", "message": "Username already exists"}
                 
                 # 创建用户
-                user = await user_repo.create_user(user_id, username, email, organization_id)
+                user = await user_repo.create_user(user_id, username, email)
                 
                 # 缓存用户信息
                 await self._cache_user(user)
@@ -107,7 +107,7 @@ class HybridStorageService:
             self.logger.error(f"Failed to get user by email: {str(e)}")
             return None
 
-    async def get_or_create_user_by_email(self, email: str, username: Optional[str] = None, organization_id: Optional[str] = None) -> Dict[str, Any]:
+    async def get_or_create_user_by_email(self, email: str, username: Optional[str] = None) -> Dict[str, Any]:
         """根据邮箱获取用户，不存在则自动注册"""
         user = await self.get_user_by_email(email)
         if user:
@@ -115,7 +115,7 @@ class HybridStorageService:
         # 自动注册
         user_id = str(uuid.uuid4())
         username = username or email.split('@')[0]
-        created = await self.create_user(user_id, username, email, organization_id)
+        created = await self.create_user(user_id, username, email)
         return created
     
     # === 团队管理 ===
@@ -383,7 +383,7 @@ class HybridStorageService:
         return {
             "team_id": team.team_id,
             "team_name": team.team_name,
-            "organization_id": team.organization_id,
+            "description": team.description,
             "owner_id": team.owner_id,
             "is_active": team.is_active,
             "max_jeff_instances": team.max_jeff_instances,

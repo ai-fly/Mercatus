@@ -56,15 +56,14 @@ class TeamManager:
     async def create_team(
         self,
         team_name: str,
-        organization_id: str,
         owner_id: str,
-        owner_username: str
+        owner_username: str,
+        description: Optional[str] = None
     ) -> Team:
         """Create a new team with hybrid storage. Default experts (Jeff, Monica, Henry) are automatically created for each team."""
         
         with self.performance_logger.time_operation(
             "team_manager_create_team",
-            organization_id=organization_id,
             owner_id=owner_id
         ):
             try:
@@ -72,7 +71,7 @@ class TeamManager:
                 team_data = {
                     "team_id": str(uuid4()),
                     "team_name": team_name,
-                    "organization_id": organization_id,
+                    "description": description,
                     "owner_id": owner_id,
                     "is_active": True,
                     "max_jeff_instances": 1,
@@ -108,7 +107,6 @@ class TeamManager:
                             extra={
                                 'team_id': team.team_id,
                                 'team_name': team_name,
-                                'organization_id': organization_id,
                                 'owner_id': owner_id,
                                 'storage_type': 'hybrid'
                             }
@@ -620,22 +618,20 @@ class TeamManager:
             }
         }
     
-    async def get_organization_overview(self, organization_id: str) -> Dict[str, Any]:
+    async def get_organization_overview(self) -> Dict[str, Any]:
         """Get overview of all teams in an organization"""
         
         all_teams = await self._get_all_teams()
-        org_teams = [team for team in all_teams if team.organization_id == organization_id]
         
-        total_members = sum(len(team.members) for team in org_teams)
-        total_experts = sum(len(team.expert_instances) for team in org_teams)
-        total_tasks = sum(team.total_tasks_completed for team in org_teams)
-        total_content = sum(team.total_content_generated for team in org_teams)
+        total_members = sum(len(team.members) for team in all_teams)
+        total_experts = sum(len(team.expert_instances) for team in all_teams)
+        total_tasks = sum(team.total_tasks_completed for team in all_teams)
+        total_content = sum(team.total_content_generated for team in all_teams)
         
-        active_teams = len([team for team in org_teams if team.is_active])
+        active_teams = len([team for team in all_teams if team.is_active])
         
         return {
-            "organization_id": organization_id,
-            "total_teams": len(org_teams),
+            "total_teams": len(all_teams),
             "active_teams": active_teams,
             "total_members": total_members,
             "total_experts": total_experts,
@@ -645,12 +641,13 @@ class TeamManager:
                 {
                     "team_id": team.team_id,
                     "team_name": team.team_name,
+                    "description": team.description,
                     "members": len(team.members),
                     "experts": len(team.expert_instances),
                     "performance_score": team.team_performance_score,
                     "is_active": team.is_active
                 }
-                for team in org_teams
+                for team in all_teams
             ]
         }
     

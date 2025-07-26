@@ -25,7 +25,6 @@ class User(Base):
     user_id = Column(String(50), primary_key=True, index=True)
     username = Column(String(100), unique=False, nullable=True, index=True)  # 用户名可选，仅用于展示
     email = Column(String(255), unique=True, nullable=False, index=True)  # 邮箱唯一且必填，OAuth登录主键
-    organization_id = Column(String(100), nullable=True, index=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -35,7 +34,6 @@ class User(Base):
     team_memberships = relationship("TeamMember", back_populates="user")
     
     __table_args__ = (
-        Index('idx_users_organization', 'organization_id'),
         Index('idx_users_created_at', 'created_at'),
         UniqueConstraint('email', name='uq_users_email'),
     )
@@ -46,8 +44,8 @@ class Team(Base):
     __tablename__ = "teams"
     
     team_id = Column(String(50), primary_key=True, index=True)
-    team_name = Column(String(200), nullable=False)
-    organization_id = Column(String(100), nullable=False, index=True)
+    team_name = Column(String(200), nullable=False, unique=True)
+    description = Column(Text, nullable=True)  # 添加 description 字段
     owner_id = Column(String(50), ForeignKey("users.user_id"), nullable=False)
     is_active = Column(Boolean, default=True)
     
@@ -76,10 +74,8 @@ class Team(Base):
     tasks = relationship("BlackboardTask", back_populates="team", cascade="all, delete-orphan")
     
     __table_args__ = (
-        Index('idx_teams_organization', 'organization_id'),
         Index('idx_teams_owner', 'owner_id'),
         Index('idx_teams_created_at', 'created_at'),
-        UniqueConstraint('team_name', 'organization_id', name='uq_team_name_org'),
     )
 
 
