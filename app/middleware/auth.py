@@ -23,7 +23,6 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             "/health",
             "/",
             "/api/v1/auth/google/login",
-            "/api/v1/auth/google/callback"
         ]
         
         # 检查当前请求路径是否在排除列表中

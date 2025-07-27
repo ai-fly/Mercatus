@@ -22,7 +22,7 @@ JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
-@router.post("/auth/google/callback", response_model=AuthTokenResponse)
+@router.post("/auth/google/login", response_model=AuthTokenResponse)
 async def auth_via_google(
     login_data: GoogleLoginRequest,
     hybrid_storage: HybridStorageService = Depends(get_hybrid_storage_service),
