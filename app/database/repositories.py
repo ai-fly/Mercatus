@@ -27,12 +27,14 @@ class UserRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
     
-    async def create_user(self, user_id: str, username: str, email: str = None) -> User:
+    async def create_user(self, user_id: str, username: str, email: str = None, full_name: str = None, picture_url: str = None) -> User:
         """创建用户"""
         user = User(
             user_id=user_id,
             username=username,
-            email=email
+            email=email,
+            full_name=full_name,
+            picture_url=picture_url
         )
         self.session.add(user)
         await self.session.flush()

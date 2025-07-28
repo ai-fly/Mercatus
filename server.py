@@ -179,6 +179,6 @@ if __name__ == "__main__":
         "server:app",
         host=settings.host,
         port=settings.port,
-        reload=settings.debug,
+        reload=True,
         log_level="info" if not settings.debug else "debug"
     )

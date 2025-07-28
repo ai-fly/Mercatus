@@ -25,6 +25,8 @@ class User(Base):
     user_id = Column(String(50), primary_key=True, index=True)
     username = Column(String(100), unique=False, nullable=True, index=True)  # 用户名可选，仅用于展示
     email = Column(String(255), unique=True, nullable=False, index=True)  # 邮箱唯一且必填，OAuth登录主键
+    full_name = Column(String(255), nullable=True)
+    picture_url = Column(String(2048), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
