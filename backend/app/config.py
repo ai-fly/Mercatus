@@ -137,7 +137,7 @@ class Config(BaseSettings):
     
     # ========== 政策更新配置 ==========
     policy_update_interval: int = Field(default=86400, description="政策更新间隔（秒），默认24小时")
-    policy_config_file: str = Field(default="config/platform_policies.yaml", description="平台政策配置文件路径")
+    policy_config_file: str = Field(default="backend/config/platform_policies.yaml", description="平台政策配置文件路径")
     policy_cache_ttl: int = Field(default=3600, description="政策缓存TTL（秒）")
     policy_update_enabled: bool = Field(default=True, description="启用政策自动更新")
     
@@ -160,7 +160,7 @@ class Config(BaseSettings):
     database_echo: bool = Field(default=False, description="是否打印SQL语句")
     
     # ========== 文件存储配置 ==========
-    file_storage_path: str = Field(default="./storage", description="文件存储路径")
+    file_storage_path: str = Field(default="./backend/storage", description="文件存储路径")
     max_file_size: int = Field(default=10 * 1024 * 1024, description="最大文件大小（字节）")
     allowed_file_types: List[str] = Field(
         default=["jpg", "jpeg", "png", "gif", "mp4", "avi", "mov"],
@@ -170,7 +170,7 @@ class Config(BaseSettings):
     # ========== 监控和日志配置 ==========
     enable_metrics: bool = Field(default=True, description="启用指标监控")
     metrics_port: int = Field(default=8080, description="指标端口")
-    log_file_path: str = Field(default="./logs/mercatus.log", description="日志文件路径")
+    log_file_path: str = Field(default="./backend/logs/mercatus.log", description="日志文件路径")
     log_rotation_size: str = Field(default="100MB", description="日志轮转大小")
     log_retention_days: int = Field(default=30, description="日志保留天数")
     

@@ -172,7 +172,7 @@ def setup_logger(name="mercatus", log_level=logging.INFO, use_structured_logging
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     
     # Create log directory
-    log_dir = "logs"
+    log_dir = "backend/logs"
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     
