@@ -1,0 +1,2 @@
+- **Implement Google Login** - 2024-08-01 - Completed
+- **Implement Team Dashboard** - 2024-08-01 - In Progress

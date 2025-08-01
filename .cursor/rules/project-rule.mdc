@@ -1,154 +1,162 @@
-## Python Project Rules
+---
+alwaysApply: true
+---
+### 📚 Update Maintenance
 
-### 🔄 Project Awareness & Context
+**README.md Update Triggers**
+- New feature additions
+- Dependency changes
+- Deployment step modifications
+- Major API interface changes
 
-- **Always read PLANNING.md** at the start of a new conversation to understand the project's architecture, goals, style, and constraints.
+**Architecture Documentation Sync**
+- PLANNING.md：Update when architecture design changes
+- API Documentation：Sync openapi.json when interface changes
+- Deployment Documentation：Update when environment configuration changes
 
-- **Check TASK.md** before starting a new task. If the task isn't listed, add it with a brief description and today's date.
+## ⚡ Performance & Optimization
 
-- **Use consistent naming conventions, file structure, and architecture patterns** as described in this PLANNING.md.
+### 🚀 Backend Performance
 
-### 🧱 Code Structure & Modularity
+**Database Optimization**
+- Proper index usage
+- Query optimization and pagination
+- Connection pool configuration
+- Read-write separation strategy
 
-- **Never create a file longer than 1000 lines of code.** If a file approaches this limit, refactor by splitting it into modules or helper files.
+**Caching Strategy**
+- Redis hot data caching
+- Application layer caching
+- CDN static resource caching
 
-- **Organize code into clearly separated modules**, grouped by feature or responsibility.
+### 🎯 Frontend Performance
 
-- **Use clear, consistent imports** following PEP 8 guidelines:
-  - Standard library imports first
-  - Third-party imports second  
-  - Local application imports last
-  - Use absolute imports when possible
+**Code Splitting**
+```typescript
+// Route-level code splitting
+const TasksPage = dynamic(() => import('@/app/tasks/page'), {
+  loading: () => <Loading />,
+});
 
-- **Follow Python package structure**:
-  ```
-  project/
-  ├── backend/
-  │   ├── app/
-  │   │   ├── __init__.py
-  │   │   ├── main.py
-  │   │   ├── models/
-  │   │   ├── services/
-  │   │   ├── utils/
-  │   │   └── config/
-  │   ├── tests/
-  │   ├── requirements.txt
-  │   └── server.py
-  ├── web/
-  └── pyproject.toml
-  ```
+// Component-level lazy loading
+const HeavyChart = lazy(() => import('@/components/HeavyChart'));
+```
 
-### ✅ Task Completion
+**Resource Optimization**
+- Image lazy loading and compression
+- Font subsetting
+- Bundle analysis and optimization
+- Service Worker caching
 
-- **Mark completed tasks in TASK.md** immediately after finishing them.
+## 🛡️ Security Considerations
 
-- Add new sub-tasks or TODOs discovered during development to TASK.md under a "Discovered During Work" section.
+### 🔐 Data Security
 
-### 📎 Style & Structure
+**Backend Security**
+- JWT token expiration and refresh
+- API rate limiting
+- Input validation and XSS protection
+- SQL injection protection
 
-**Python Code Standards:**
-- Follow PEP 8 style guidelines strictly
-- Use type hints for all function parameters and return values
-- Prefer functional programming patterns; avoid unnecessary classes
-- Use descriptive variable names with clear intent (e.g., `is_valid`, `has_appointments`, `should_schedule`)
-- Structure modules: imports, constants, functions, classes, main execution
+**Frontend Security**
+- XSS protection
+- CSRF protection
+- No sensitive information stored on client
+- Secure third-party dependencies
 
-**Naming Conventions:**
-- Use snake_case for variables, functions, and module names
-- Use PascalCase for class names
-- Use UPPER_CASE for constants
-- Use lowercase with underscores for directories (e.g., `medical_providers`, `appointment_scheduler`)
+### 🏢 Multi-tenant Isolation
 
-**Function and Class Design:**
-- Write pure functions when possible
-- Use dataclasses or Pydantic models for data structures
-- Implement single responsibility principle
-- Use early returns and guard clauses
-- Keep functions under 50 lines when possible
+**Data Isolation**
+- Team-level data isolation
+- API permission verification
+- Database row-level security
+- Audit log recording
 
-**Error Handling and Validation:**
-- Prioritize error handling: handle errors and edge cases early
-- Use custom exception classes for domain-specific errors
-- Implement proper logging with structured logging (use `structlog` or `loguru`)
-- Use Pydantic for data validation and serialization
-- Model expected errors as return values using Result types or Optional
-- Use proper exception handling with specific exception types
+## 🚀 Deployment & Operations
 
-**Performance and Best Practices:**
-- Use async/await for I/O operations
-- Implement connection pooling for database operations
-- Use lazy loading for expensive operations
-- Implement proper caching strategies
-- Use context managers for resource management
+### 🐳 Containerized Deployment
 
-**Key Libraries and Patterns:**
-- Use `pydantic` for data validation and settings management
-- Use `sqlalchemy` for database operations with async support
-- Use `fastapi` for API endpoints if needed
-- Use `pytest` for testing with fixtures and parametrization
-- Use `black` for code formatting
-- Use `mypy` for static type checking
-- Use `ruff` or `flake8` for linting
+**Docker Configuration**
+```dockerfile
+# Backend Dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+```
 
-### 📚 Documentation & Explainability
+```dockerfile
+# Frontend Dockerfile
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+RUN npm run build
+CMD ["npm", "start"]
+```
 
-- **Update README.md** when new features are added, dependencies change, or setup steps are modified.
+### 🔍 Monitoring & Logging
 
-- **Use comprehensive docstrings** following Google or NumPy style:
-  ```python
-  def calculate_optimal_provider(
-      symptoms: List[str], 
-      insurance_type: str, 
-      location: str
-  ) -> OptimalProviderResult:
-      """Calculate the optimal medical provider based on user criteria.
-      
-      Args:
-          symptoms: List of user-reported symptoms
-          insurance_type: Type of insurance coverage
-          location: User's location (state/city)
-          
-      Returns:
-          OptimalProviderResult containing provider details and booking link
-          
-      Raises:
-          NoProvidersFoundError: When no suitable providers are available
-          InvalidInsuranceError: When insurance type is not supported
-      """
-  ```
+**Structured Logging**
+```python
+import structlog
 
-- **Comment complex logic** with inline comments explaining the reasoning
+logger = structlog.get_logger()
 
-- **Maintain type stubs** for external libraries when needed
+logger.info(
+    "task_created",
+    task_id=task.id,
+    team_id=task.team_id,
+    user_id=user.id,
+    performance_metrics={"duration_ms": 150}
+)
+```
 
-### 🧠 AI Behavior Rules
+**Health Checks**
+- `/health`：Service health status
+- `/health/db`：Database connection status
+- `/health/redis`：Redis connection status
 
-- **Never assume missing context. Ask questions if uncertain.**
+## 🎯 AI Assistant Behavior Guidelines
 
-- **Never hallucinate libraries or functions** – only use known, verified Python packages from PyPI.
+### 🤖 Development Assistant Rules
 
-- **Always confirm file paths and module names** exist before referencing them in code or tests.
+- **Mandatory Documentation Reading**：**ALWAYS** start by reading `backend/documents/PLANNING.md` and `web/documents/PLANNING.md` before any work - no exceptions
+- **Context Awareness**：Always read relevant documentation first to understand project status
+- **No Assumptions**：Ask questions when uncertain, don't fabricate APIs or libraries
+- **File Path Confirmation**：Verify file paths exist before referencing them
+- **Incremental Development**：Don't delete or overwrite existing code unless explicitly requested
+- **Autonomous Task Management**：**MUST** autonomously update `backend/documents/TASK.md` and `web/documents/TASK.md` based on work performed:
+  - Mark completed tasks immediately
+  - Add newly discovered tasks or requirements
+  - Document technical decisions and blockers
+  - Track dependencies and optimization opportunities
 
-- **Never delete or overwrite existing code** unless explicitly instructed to or if part of a task from TASK.md.
+### 📋 Workflow
 
-- **Use proper Python project structure** with virtual environments and dependency management.
+1. **Read Planning Documents**：**MANDATORY** - Read both `backend/documents/PLANNING.md` and `web/documents/PLANNING.md` to understand current project architecture and status
+2. **Understand Requirements**：Analyze the specific task requirements in context of overall project goals
+3. **Plan Implementation**：Design technical solutions and implementation steps aligned with project architecture
+4. **Code Implementation**：Follow project standards for development
+5. **Test Verification**：Ensure functionality works correctly
+6. **Update Task Documentation**：**MANDATORY** - Update `backend/documents/TASK.md` and/or `web/documents/TASK.md` with:
+   - Completed task status
+   - New discovered tasks or requirements
+   - Technical decisions made
+   - Dependencies or issues encountered
 
-### 🔧 Development Workflow
+### 🔧 Technology Choices
 
-- **Use virtual environments** (venv, conda, or poetry) for dependency isolation
-- **Pin dependency versions** in requirements.txt or pyproject.toml
-- **Write tests first** when implementing new features (TDD approach)
-- **Use pre-commit hooks** for code quality checks
-- **Implement CI/CD** with Jenkins for automated testing and deployment
+**Prioritize Existing Project Tech Stack**
+- Backend：FastAPI + SQLAlchemy + PostgreSQL + Redis
+- Frontend：Next.js + TypeScript + Tailwind CSS + SWR
+- Authentication：Google OAuth + JWT
+- Testing：pytest + Jest + React Testing Library
 
-
-### 🏗️ Architecture Patterns
-
-- **Use dependency injection** for service layer components
-- **Implement repository pattern** for data access
-- **Use factory pattern** for object creation when appropriate
-- **Apply SOLID principles** in class design
-- **Implement proper separation of concerns** between layers (presentation, business logic, data access) 
-- **Use factory pattern** for object creation when appropriate
-- **Apply SOLID principles** in class design
-- **Implement proper separation of concerns** between layers (presentation, business logic, data access) 
+**Dependency Management**
+- Python: Specify versions in requirements.txt
+- Node.js: Lock versions in package.json
+- Evaluate necessity before adding new dependencies 
