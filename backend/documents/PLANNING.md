@@ -434,20 +434,20 @@ PORT=8000
 
 ```bash
 # 初始化数据库
-python scripts/init_database.py --action init
+python backend/scripts/init_database.py --action init
 
 # 重置数据库（谨慎使用）
-python scripts/init_database.py --action reset --confirm
+python backend/scripts/init_database.py --action reset --confirm
 ```
 
 ### 6.3 服务启动
 
 ```bash
 # 启动应用
-python server.py
+python backend/server.py
 
 # 或使用 uvicorn
-uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+uvicorn backend.server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### 6.4 监控和日志
