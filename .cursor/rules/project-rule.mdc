@@ -1,6 +1,3 @@
----
-alwaysApply: true
----
 ## Python Project Rules
 
 ### 🔄 Project Awareness & Context
@@ -26,15 +23,18 @@ alwaysApply: true
 - **Follow Python package structure**:
   ```
   project/
-  ├── src/
-  │   ├── __init__.py
-  │   ├── main.py
-  │   ├── models/
-  │   ├── services/
-  │   ├── utils/
-  │   └── config/
-  ├── tests/
-  ├── requirements.txt
+  ├── backend/
+  │   ├── app/
+  │   │   ├── __init__.py
+  │   │   ├── main.py
+  │   │   ├── models/
+  │   │   ├── services/
+  │   │   ├── utils/
+  │   │   └── config/
+  │   ├── tests/
+  │   ├── requirements.txt
+  │   └── server.py
+  ├── web/
   └── pyproject.toml
   ```
 
@@ -146,6 +146,9 @@ alwaysApply: true
 
 - **Use dependency injection** for service layer components
 - **Implement repository pattern** for data access
+- **Use factory pattern** for object creation when appropriate
+- **Apply SOLID principles** in class design
+- **Implement proper separation of concerns** between layers (presentation, business logic, data access) 
 - **Use factory pattern** for object creation when appropriate
 - **Apply SOLID principles** in class design
 - **Implement proper separation of concerns** between layers (presentation, business logic, data access) 
