@@ -8,25 +8,25 @@ The BlackBoard system is a comprehensive multi-tenant task management and collab
 
 ### Core Components
 
-1. **BlackBoard Core** (`app/core/blackboard.py`)
+1. **BlackBoard Core** (`backend/app/core/blackboard.py`)
    - Task lifecycle management
    - Expert instance coordination
    - Real-time state tracking
    - Performance analytics
 
-2. **Team Manager** (`app/core/team_manager.py`)
+2. **Team Manager** (`backend/app/core/team_manager.py`)
    - Multi-tenant team management
    - Expert instance scaling
    - Auto-assignment algorithms
    - Team analytics
 
-3. **Type System** (`app/types/blackboard.py`)
+3. **Type System** (`backend/app/types/blackboard.py`)
    - Comprehensive type definitions
    - Task state management
    - Expert role definitions
    - Team collaboration models
 
-4. **API Controller** (`app/controllers/blackboard_controller.py`)
+4. **API Controller** (`backend/app/controllers/blackboard_controller.py`)
    - RESTful API endpoints
    - Request/response models
    - Authentication integration
