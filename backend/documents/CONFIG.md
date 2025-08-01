@@ -138,7 +138,7 @@ Mercatus 使用 Pydantic BaseSettings 进行配置管理，支持从环境变量
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `POLICY_UPDATE_INTERVAL` | int | 86400 | 政策更新间隔（秒），默认24小时 |
-| `POLICY_CONFIG_FILE` | str | "config/platform_policies.yaml" | 平台政策配置文件路径 |
+| `POLICY_CONFIG_FILE` | str | "backend/config/platform_policies.yaml" | 平台政策配置文件路径 |
 | `POLICY_CACHE_TTL` | int | 3600 | 政策缓存TTL（秒） |
 | `POLICY_UPDATE_ENABLED` | bool | true | 启用政策自动更新 |
 
@@ -162,7 +162,7 @@ Mercatus 使用 Pydantic BaseSettings 进行配置管理，支持从环境变量
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `FILE_STORAGE_PATH` | str | "./storage" | 文件存储路径 |
+| `FILE_STORAGE_PATH` | str | "./backend/storage" | 文件存储路径 |
 | `MAX_FILE_SIZE` | int | 10485760 | 最大文件大小（字节） |
 | `ALLOWED_FILE_TYPES` | List[str] | ["jpg", "jpeg", "png", "gif", "mp4", "avi", "mov"] | 允许的文件类型 |
 
@@ -172,7 +172,7 @@ Mercatus 使用 Pydantic BaseSettings 进行配置管理，支持从环境变量
 |--------|------|--------|------|
 | `ENABLE_METRICS` | bool | true | 启用指标监控 |
 | `METRICS_PORT` | int | 8080 | 指标端口 |
-| `LOG_FILE_PATH` | str | "./logs/mercatus.log" | 日志文件路径 |
+| `LOG_FILE_PATH` | str | "./backend/logs/mercatus.log" | 日志文件路径 |
 | `LOG_ROTATION_SIZE` | str | "100MB" | 日志轮转大小 |
 | `LOG_RETENTION_DAYS` | int | 30 | 日志保留天数 |
 
