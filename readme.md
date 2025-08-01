@@ -56,7 +56,7 @@ source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate  # Windows
 
 # 安装依赖
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 ### 3. 数据库配置
@@ -108,20 +108,20 @@ ROCKETMQ_NAMESRV_ADDR=localhost:9876
 
 ```bash
 # 初始化数据库表
-python scripts/init_database.py --action init
+python backend/scripts/init_database.py --action init
 
 # 重置数据库（谨慎使用）
-python scripts/init_database.py --action reset --confirm
+python backend/scripts/init_database.py --action reset --confirm
 ```
 
 ### 6. 启动服务
 
 ```bash
 # 启动应用
-python server.py
+python backend/server.py
 
 # 或使用 uvicorn
-uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+uvicorn backend.server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ## 📚 API 使用指南
@@ -278,7 +278,7 @@ pytest tests/performance/
 
 ### 测试覆盖率
 ```bash
-pytest --cov=app tests/
+pytest --cov=backend/app tests/
 ```
 
 ## 🚀 部署
@@ -301,33 +301,35 @@ export DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/mercatus_prod
 export REDIS_URL=redis://host:6379/0
 
 # 启动服务
-uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn backend.server:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 ## 📁 项目结构
 
 ```
 Mercatus/
-├── app/                    # 应用代码
-│   ├── agents/            # 智能体
-│   ├── clients/           # 外部客户端
-│   ├── config.py          # 配置管理
-│   ├── controllers/       # API 控制器
-│   ├── core/              # 核心组件
-│   ├── database/          # 数据库层
-│   ├── experts/           # 专家系统
-│   ├── services/          # 业务服务
-│   ├── tools/             # 工具集
-│   ├── types/             # 类型定义
-│   └── utils/             # 工具函数
-├── artifacts/             # 生成的文件
-├── docs/                  # 文档
-├── documents/             # 项目文档
-├── logs/                  # 日志文件
-├── scripts/               # 脚本文件
-├── tests/                 # 测试代码
-├── requirements.txt       # 依赖列表
-├── server.py             # 服务器入口
+├── backend/              # 后端代码
+│   ├── app/              # 应用代码
+│   │   ├── agents/
+│   │   ├── clients/
+│   │   ├── config.py
+│   │   ├── controllers/
+│   │   ├── core/
+│   │   ├── database/
+│   │   ├── experts/
+│   │   ├── services/
+│   │   ├── tools/
+│   │   ├── types/
+│   │   └── utils/
+│   ├── artifacts/
+│   ├── docs/
+│   ├── documents/
+│   ├── logs/
+│   ├── scripts/
+│   ├── tests/
+│   ├── requirements.txt
+│   └── server.py
+├── web/                  # 前端代码
 └── README.md             # 项目说明
 ```
 
