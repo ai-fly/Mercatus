@@ -6,21 +6,15 @@
 
 import json
 import logging
-from typing import Dict, List, Optional, Any, Union
-from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Dict, List, Optional, Any
+from datetime import datetime
 import uuid
 
 from app.database.repositories import (
-    UserRepository, TeamRepository, TaskRepository, 
-    ExpertInstanceRepository, TaskAssignmentRepository
+    UserRepository
 )
 from app.database.connection import AsyncSessionLocal
 from app.clients.redis_client import redis_client_instance
-from app.types.blackboard import (
-    BlackboardTask, TaskStatus, TaskPriority, ExpertRole, TeamRole,
-    ExpertInstance, TaskAssignment, Team, TeamMember, BlackboardState
-)
 from app.utils.logging import get_business_logger, get_performance_logger
 
 
@@ -67,7 +61,7 @@ class HybridStorageService:
                 )
 
                 # 缓存用户信息
-                await self._cache_user(user)
+                self._cache_user(user)
 
                 return {
                     "status": "success",
@@ -324,52 +318,52 @@ class HybridStorageService:
 
     # === 缓存管理 ===
 
-    async def _cache_user(self, user) -> None:
+    def _cache_user(self, user) -> None:
         """缓存用户信息"""
         cache_key = f"{self.cache_prefix}:user:{user.user_id}"
         user_data = self._user_to_dict(user)
-        await self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(user_data))
+        self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(user_data))
 
-    async def _get_cached_user(self, user_id: str) -> Optional[Dict[str, Any]]:
+    def _get_cached_user(self, user_id: str) -> Optional[Dict[str, Any]]:
         """获取缓存的用户信息"""
         cache_key = f"{self.cache_prefix}:user:{user_id}"
-        data = await self.redis_client.get(cache_key)
+        data = self.redis_client.get(cache_key)
         return json.loads(data) if data else None
 
-    async def _cache_team(self, team) -> None:
+    def _cache_team(self, team) -> None:
         """缓存团队信息"""
         cache_key = f"{self.cache_prefix}:team:{team.team_id}"
         team_data = self._team_to_dict(team)
-        await self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(team_data))
+        self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(team_data))
 
-    async def _get_cached_team(self, team_id: str) -> Optional[Dict[str, Any]]:
+    def _get_cached_team(self, team_id: str) -> Optional[Dict[str, Any]]:
         """获取缓存的团队信息"""
         cache_key = f"{self.cache_prefix}:team:{team_id}"
-        data = await self.redis_client.get(cache_key)
+        data = self.redis_client.get(cache_key)
         return json.loads(data) if data else None
 
-    async def _cache_task(self, task) -> None:
+    def _cache_task(self, task) -> None:
         """缓存任务信息"""
         cache_key = f"{self.cache_prefix}:task:{task.task_id}"
         task_data = self._task_to_dict(task)
-        await self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(task_data))
+        self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(task_data))
 
-    async def _get_cached_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+    def _get_cached_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """获取缓存的任务信息"""
         cache_key = f"{self.cache_prefix}:task:{task_id}"
-        data = await self.redis_client.get(cache_key)
+        data = self.redis_client.get(cache_key)
         return json.loads(data) if data else None
 
-    async def _cache_expert(self, expert) -> None:
+    def _cache_expert(self, expert) -> None:
         """缓存专家信息"""
         cache_key = f"{self.cache_prefix}:expert:{expert.instance_id}"
         expert_data = self._expert_to_dict(expert)
-        await self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(expert_data))
+        self.redis_client.setex(cache_key, self.cache_ttl, json.dumps(expert_data))
 
-    async def _get_cached_expert(self, instance_id: str) -> Optional[Dict[str, Any]]:
+    def _get_cached_expert(self, instance_id: str) -> Optional[Dict[str, Any]]:
         """获取缓存的专家信息"""
         cache_key = f"{self.cache_prefix}:expert:{instance_id}"
-        data = await self.redis_client.get(cache_key)
+        data = self.redis_client.get(cache_key)
         return json.loads(data) if data else None
 
     # === 数据转换 ===
@@ -382,7 +376,6 @@ class HybridStorageService:
             "email": user.email,
             "full_name": getattr(user, 'full_name', None),
             "picture_url": getattr(user, 'picture_url', None),
-            "organization_id": user.organization_id,
             "is_active": user.is_active,
             "created_at": user.created_at.isoformat() if user.created_at else None,
             "updated_at": user.updated_at.isoformat() if user.updated_at else None

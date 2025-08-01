@@ -1,10 +1,11 @@
 """
 Dependency injection functions for FastAPI
 """
-from fastapi import HTTPException, Depends
+from fastapi import HTTPException, Depends, Request
 from app.core.team_manager import TeamManager
 from app.services.hybrid_storage import HybridStorageService
 from google.auth.transport import requests
+from app.types.auth import User
 
 # --- Google Auth ---
 # Create a global request object for Google Auth.
@@ -41,4 +42,21 @@ async def get_hybrid_storage_service() -> HybridStorageService:
     """Get hybrid storage service instance"""
     if hybrid_storage_service is None:
         raise HTTPException(status_code=503, detail="Hybrid storage service not initialized")
-    return hybrid_storage_service 
+    return hybrid_storage_service
+
+
+async def get_current_user(request: Request) -> User:
+    """
+    Dependency to get the current user from the request state.
+    The JWTAuthMiddleware must be applied to the endpoints using this dependency.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated or user information not found in token",
+        )
+
+    # The payload from the token is a dictionary.
+    # We can convert it to a Pydantic model for type safety and clarity.
+    return User(**user) 

@@ -15,4 +15,11 @@ class GoogleProfile(BaseModel):
 class GoogleLoginRequest(BaseModel):
     """Represents the request body for the Google login callback."""
     id_token: str
-    profile: GoogleProfile 
+    profile: GoogleProfile
+
+class User(BaseModel):
+    """Represents the authenticated user data retrieved from the JWT token."""
+    user_id: str
+    email: EmailStr
+    name: Optional[str] = None
+    picture: Optional[str] = None 

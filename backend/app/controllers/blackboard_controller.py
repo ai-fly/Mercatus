@@ -7,12 +7,13 @@ from pydantic import BaseModel
 
 from app.core.team_manager import TeamManager
 from app.services.hybrid_storage import HybridStorageService
-from app.dependencies import get_team_manager, get_hybrid_storage_service
+from app.dependencies import get_team_manager, get_hybrid_storage_service, get_current_user
 from app.types.blackboard import (
     Team, TeamMember, TeamRole, ExpertInstance, ExpertRole,
     BlackboardTask, TaskStatus, TaskPriority, TaskSearchCriteria,
     Platform, Region, ContentType
 )
+from app.types.auth import User
 from app.utils.logging import get_business_logger, get_performance_logger
 
 # 创建路由器
@@ -31,10 +32,11 @@ async def create_team(
     request: Request,
     team_data: dict,
     team_manager: TeamManager = Depends(get_team_manager),
-    hybrid_storage: HybridStorageService = Depends(get_hybrid_storage_service)
+    hybrid_storage: HybridStorageService = Depends(get_hybrid_storage_service),
+    current_user: User = Depends(get_current_user)
 ):
     """Create a new team"""
-    
+
     with performance_logger.time_operation(
         "api_create_team",
         team_name=team_data.get("team_name"),
@@ -43,22 +45,21 @@ async def create_team(
             team = await team_manager.create_team(
                 team_name=team_data["team_name"],
                 description=team_data.get("description"),
-                owner_id=team_data["owner_id"],
-                owner_username=team_data["owner_username"]
+                owner_id=current_user.user_id
             )
-            
+
             business_logger.log_team_created(
                 team.team_id,
                 team.team_name,
                 team.owner_id
             )
-            
+
             return {
                 "status": "success",
                 "team_id": team.team_id,
                 "message": "Team created successfully"
             }
-            
+
         except Exception as e:
             logger.error(f"Failed to create team: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))

@@ -57,7 +57,6 @@ class TeamManager:
         self,
         team_name: str,
         owner_id: str,
-        owner_username: str,
         description: Optional[str] = None
     ) -> Team:
         """Create a new team with hybrid storage. Default experts (Jeff, Monica, Henry) are automatically created for each team."""
