@@ -1,37 +1,98 @@
 ---
 alwaysApply: true
 ---
-### 📚 Update Maintenance
 
-**README.md Update Triggers**
-- New feature additions
-- Dependency changes
-- Deployment step modifications
-- Major API interface changes
+# 📋 Mercatus Development Workflow & Guidelines
 
-**Architecture Documentation Sync**
-- PLANNING.md：Update when architecture design changes
-- API Documentation：Sync openapi.json when interface changes
-- Deployment Documentation：Update when environment configuration changes
+## Table of Contents
+1. [🎯 Core Development Workflow](#core-development-workflow)
+2. [🤖 AI Assistant Behavior Guidelines](#ai-assistant-behavior-guidelines) 
+3. [🔧 Technology Stack](#technology-stack)
+4. [⚡ Performance & Optimization](#performance--optimization)
+5. [🛡️ Security Considerations](#security-considerations)
+6. [🚀 Deployment & Operations](#deployment--operations)
+7. [📚 Documentation Maintenance](#documentation-maintenance)
+
+---
+
+## 🎯 Core Development Workflow
+
+### 📖 **CRITICAL: Document-First Development Process**
+
+**The PRD.md file is the master product design document and MUST be the starting point for ALL development work.**
+
+#### Mandatory Workflow Sequence:
+1. **📋 Read PRD.md** - **ALWAYS** read this file first to understand product requirements
+2. **📝 Update PRD.md** - If modifying/adding/removing features, update PRD.md FIRST
+3. **📄 Update Planning Documents** - Then update both:
+   - `web/documents/PLANNING.md`
+   - `backend/documents/PLANNING.md`
+4. **💻 Implementation** - Write code following project standards
+5. **📋 Update Task Files** - Finally update both:
+   - `web/documents/TASK.md`
+   - `backend/documents/TASK.md`
+
+### 📋 Standard Development Workflow
+
+1. **📖 Read Documentation** - **MANDATORY** - Read PRD.md and both PLANNING.md files
+2. **🔍 Understand Requirements** - Analyze task requirements in context of product goals
+3. **📐 Plan Implementation** - Design technical solutions aligned with architecture
+4. **💻 Code Implementation** - Follow project standards and best practices
+5. **🧪 Test Verification** - Ensure functionality works correctly
+6. **📝 Update Documentation** - Update task files with progress and decisions
+
+---
+
+## 🤖 AI Assistant Behavior Guidelines
+
+### 🔧 Development Assistant Rules
+
+- **📖 Mandatory Documentation Reading** - **ALWAYS** start by reading PRD.md, then both PLANNING.md files before any work
+- **🧠 Context Awareness** - Always read relevant documentation first to understand project status
+- **❓ No Assumptions** - Ask questions when uncertain, don't fabricate APIs or libraries
+- **📂 File Path Confirmation** - Verify file paths exist before referencing them
+- **🔄 Incremental Development** - Don't delete or overwrite existing code unless explicitly requested
+- **📋 Autonomous Task Management** - **MUST** autonomously update task files based on work performed:
+  - Mark completed tasks immediately
+  - Add newly discovered tasks or requirements
+  - Document technical decisions and blockers
+  - Track dependencies and optimization opportunities
+
+---
+
+## 🔧 Technology Stack
+
+### **Current Project Tech Stack**
+- **Backend**: FastAPI + SQLAlchemy + PostgreSQL + Redis
+- **Frontend**: Next.js + TypeScript + Tailwind CSS + SWR
+- **Authentication**: Google OAuth + JWT
+- **Testing**: pytest + Jest + React Testing Library
+
+### **Dependency Management**
+- **Python**: Specify versions in requirements.txt
+- **Node.js**: Lock versions in package.json
+- **Policy**: Evaluate necessity before adding new dependencies
+
+---
 
 ## ⚡ Performance & Optimization
 
 ### 🚀 Backend Performance
 
-**Database Optimization**
+#### Database Optimization
 - Proper index usage
 - Query optimization and pagination
 - Connection pool configuration
 - Read-write separation strategy
 
-**Caching Strategy**
+#### Caching Strategy
 - Redis hot data caching
 - Application layer caching
 - CDN static resource caching
 
 ### 🎯 Frontend Performance
 
-**Code Splitting**
+#### Code Splitting
 ```typescript
 // Route-level code splitting
 const TasksPage = dynamic(() => import('@/app/tasks/page'), {
@@ -42,23 +103,25 @@ const TasksPage = dynamic(() => import('@/app/tasks/page'), {
 const HeavyChart = lazy(() => import('@/components/HeavyChart'));
 ```
 
-**Resource Optimization**
+#### Resource Optimization
 - Image lazy loading and compression
 - Font subsetting
 - Bundle analysis and optimization
 - Service Worker caching
 
+---
+
 ## 🛡️ Security Considerations
 
 ### 🔐 Data Security
 
-**Backend Security**
+#### Backend Security
 - JWT token expiration and refresh
 - API rate limiting
 - Input validation and XSS protection
 - SQL injection protection
 
-**Frontend Security**
+#### Frontend Security
 - XSS protection
 - CSRF protection
 - No sensitive information stored on client
@@ -66,17 +129,19 @@ const HeavyChart = lazy(() => import('@/components/HeavyChart'));
 
 ### 🏢 Multi-tenant Isolation
 
-**Data Isolation**
+#### Data Isolation
 - Team-level data isolation
 - API permission verification
 - Database row-level security
 - Audit log recording
 
+---
+
 ## 🚀 Deployment & Operations
 
 ### 🐳 Containerized Deployment
 
-**Docker Configuration**
+#### Docker Configuration
 ```dockerfile
 # Backend Dockerfile
 FROM python:3.11-slim
@@ -100,7 +165,7 @@ CMD ["npm", "start"]
 
 ### 🔍 Monitoring & Logging
 
-**Structured Logging**
+#### Structured Logging
 ```python
 import structlog
 
@@ -115,48 +180,24 @@ logger.info(
 )
 ```
 
-**Health Checks**
-- `/health`：Service health status
-- `/health/db`：Database connection status
-- `/health/redis`：Redis connection status
+#### Health Checks
+- `/health` - Service health status
+- `/health/db` - Database connection status
+- `/health/redis` - Redis connection status
 
-## 🎯 AI Assistant Behavior Guidelines
+---
 
-### 🤖 Development Assistant Rules
+## 📚 Documentation Maintenance
 
-- **Mandatory Documentation Reading**：**ALWAYS** start by reading `backend/documents/PLANNING.md` and `web/documents/PLANNING.md` before any work - no exceptions
-- **Context Awareness**：Always read relevant documentation first to understand project status
-- **No Assumptions**：Ask questions when uncertain, don't fabricate APIs or libraries
-- **File Path Confirmation**：Verify file paths exist before referencing them
-- **Incremental Development**：Don't delete or overwrite existing code unless explicitly requested
-- **Autonomous Task Management**：**MUST** autonomously update `backend/documents/TASK.md` and `web/documents/TASK.md` based on work performed:
-  - Mark completed tasks immediately
-  - Add newly discovered tasks or requirements
-  - Document technical decisions and blockers
-  - Track dependencies and optimization opportunities
+### 📝 Update Triggers
 
-### 📋 Workflow
+#### README.md Updates
+- New feature additions
+- Dependency changes
+- Deployment step modifications
+- Major API interface changes
 
-1. **Read Planning Documents**：**MANDATORY** - Read both `backend/documents/PLANNING.md` and `web/documents/PLANNING.md` to understand current project architecture and status
-2. **Understand Requirements**：Analyze the specific task requirements in context of overall project goals
-3. **Plan Implementation**：Design technical solutions and implementation steps aligned with project architecture
-4. **Code Implementation**：Follow project standards for development
-5. **Test Verification**：Ensure functionality works correctly
-6. **Update Task Documentation**：**MANDATORY** - Update `backend/documents/TASK.md` and/or `web/documents/TASK.md` with:
-   - Completed task status
-   - New discovered tasks or requirements
-   - Technical decisions made
-   - Dependencies or issues encountered
-
-### 🔧 Technology Choices
-
-**Prioritize Existing Project Tech Stack**
-- Backend：FastAPI + SQLAlchemy + PostgreSQL + Redis
-- Frontend：Next.js + TypeScript + Tailwind CSS + SWR
-- Authentication：Google OAuth + JWT
-- Testing：pytest + Jest + React Testing Library
-
-**Dependency Management**
-- Python: Specify versions in requirements.txt
-- Node.js: Lock versions in package.json
-- Evaluate necessity before adding new dependencies 
+#### Architecture Documentation Sync
+- **PLANNING.md** - Update when architecture design changes
+- **API Documentation** - Sync openapi.json when interface changes
+- **Deployment Documentation** - Update when environment configuration changes
