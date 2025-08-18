@@ -105,6 +105,10 @@
     "forgotPassword": "忘记密码？",
     "rememberMe": "记住我",
     "loginError": "登录失败，请重试",
+    "loginSuccess": "登录成功",
+    "logoutSuccess": "退出登录成功",
+    "unauthorized": "未授权访问",
+    "sessionExpired": "会话已过期，请重新登录",
     "welcome": "欢迎回来"
   },
   "dashboard": {
@@ -341,8 +345,96 @@
     "logout": "退出登录",
     "getStarted": "开始使用",
     "loading": "加载中...",
-    "heroTitle": "组建您的自动化营销团队",
-    "heroSubtitle": "与全天候 AI 团队一起设计、协作和执行营销活动。",
-    "cta": "免费开始"
+    "heroTitle": "营销的未来已来",
+    "heroSubtitle": "几分钟内构建、部署和扩展您的AI营销团队",
+    "heroDescription": "通过自主AI智能体改变您的营销方式，它们能够24/7规划、创建和执行营销活动。无需手动工作，只有结果。",
+    "cta": "立即启动AI团队",
+    "ctaSecondary": "观看演示",
+    "trustedBy": "全球创新团队的信赖之选",
+    "featuresTitle": "强大的AI驱动功能",
+    "featurePlanning": {
+      "title": "智能策略规划",
+      "desc": "AI分析您的市场、竞争对手和目标，在几秒内生成全面的多渠道营销策略。"
+    },
+    "featureExecution": {
+      "title": "自主内容创作",
+      "desc": "专业AI智能体协作创建、审核并发布高质量内容到您的所有营销渠道。"
+    },
+    "featureAnalytics": {
+      "title": "实时性能优化",
+      "desc": "持续监控和AI驱动的洞察自动优化您的营销活动，实现最大ROI。"
+    },
+    "featureCollaboration": {
+      "title": "无缝团队协作",
+      "desc": "人工监督与AI效率完美结合。通过直观的协作工具审核、批准和指导您的AI团队。"
+    },
+    "featureScaling": {
+      "title": "无限扩展性",
+      "desc": "无需扩大团队规模即可扩展营销工作。同时处理多个活动和无限渠道。"
+    },
+    "featureIntegration": {
+      "title": "通用集成",
+      "desc": "与您现有的营销技术栈连接。与您已在使用的流行平台和工具无缝协作。"
+    },
+    "statsTitle": "经验证的成果",
+    "stat1": {
+      "number": "10倍",
+      "label": "更快的活动创建"
+    },
+    "stat2": {
+      "number": "85%",
+      "label": "手动工作减少"
+    },
+    "stat3": {
+      "number": "24/7",
+      "label": "全天候营销"
+    },
+    "stat4": {
+      "number": "150%",
+      "label": "平均ROI增长"
+    },
+    "howItWorksTitle": "工作原理",
+    "step1": {
+      "title": "定义您的目标",
+      "desc": "告诉我们您的营销目标、目标受众和品牌指导原则。"
+    },
+    "step2": {
+      "title": "AI规划您的策略",
+      "desc": "我们的AI分析您的市场并创建全面的营销计划。"
+    },
+    "step3": {
+      "title": "智能体执行和优化",
+      "desc": "专业AI智能体创建内容、启动活动并持续优化性能。"
+    },
+    "step4": {
+      "title": "监控和扩展",
+      "desc": "实时跟踪结果并自动扩展成功的营销活动。"
+    },
+    "testimonialsTitle": "用户评价",
+    "testimonial1": {
+      "quote": "Mercatus改变了我们的营销运营。现在我们用同样的团队规模运行5倍多的营销活动。",
+      "author": "陈莎拉",
+      "role": "营销总监",
+      "company": "科技流公司"
+    },
+    "testimonial2": {
+      "quote": "AI智能体完美理解我们的品牌声音。就像有一支营销专家团队24/7工作。",
+      "author": "迈克尔·罗德里格斯",
+      "role": "首席执行官",
+      "company": "增长实验室"
+    },
+    "testimonial3": {
+      "quote": "第一季度ROI增长了180%。自主优化功能令人惊叹。",
+      "author": "艾玛·汤普森",
+      "role": "增长负责人",
+      "company": "创新公司"
+    },
+    "pricingTitle": "开启您的AI营销革命",
+    "pricingSubtitle": "为您的团队选择完美的计划",
+    "freeTrialNote": "14天免费试用。无需信用卡。",
+    "finalCtaTitle": "准备好改变您的营销了吗？",
+    "finalCtaSubtitle": "加入已经在使用AI扩展营销工作的数千家公司。",
+    "finalCta": "免费开始",
+    "finalCtaSecondary": "预约演示"
   }
-} 
+}

@@ -108,7 +108,8 @@
     "loginSuccess": "Login successful",
     "logoutSuccess": "Logged out successfully",
     "unauthorized": "Unauthorized access",
-    "sessionExpired": "Session expired, please login again"
+    "sessionExpired": "Session expired, please login again",
+    "welcome": "Welcome Back"
   },
   "dashboard": {
     "title": "Welcome to Mercatus Content Factory",
@@ -344,21 +345,96 @@
     "logout": "Logout",
     "getStarted": "Get Started",
     "loading": "Loading...",
-    "heroTitle": "Dream, Chat, Create. Your 24/7 AI Team.",
-    "heroSubtitle": "Design, collaborate, and execute marketing campaigns with a 24/7 AI-powered team.",
-    "cta": "Get Started for Free",
-    "featuresTitle": "Key Features",
+    "heroTitle": "The Future of Marketing is Here",
+    "heroSubtitle": "Build, Deploy & Scale Your AI Marketing Team in Minutes",
+    "heroDescription": "Transform your marketing with autonomous AI agents that plan, create, and execute campaigns 24/7. No manual work, just results.",
+    "cta": "Start Your AI Team Today",
+    "ctaSecondary": "Watch Demo",
+    "trustedBy": "Trusted by innovative teams worldwide",
+    "featuresTitle": "Powerful AI-Driven Features",
     "featurePlanning": {
-      "title": "Intelligent Planning",
-      "desc": "Generate multi-channel marketing plans in one click based on data and goals."
+      "title": "Intelligent Strategy Planning",
+      "desc": "AI analyzes your market, competitors, and goals to generate comprehensive multi-channel marketing strategies in seconds."
     },
     "featureExecution": {
-      "title": "Automated Execution",
-      "desc": "Collaborative expert agents create, publish and promote content automatically."
+      "title": "Autonomous Content Creation",
+      "desc": "Expert AI agents collaborate to create, review, and publish high-quality content across all your marketing channels."
     },
     "featureAnalytics": {
-      "title": "Real-time Analytics",
-      "desc": "Full-funnel performance monitoring & insights to continuously optimize strategy."
-    }
+      "title": "Real-time Performance Optimization",
+      "desc": "Continuous monitoring and AI-driven insights automatically optimize your campaigns for maximum ROI."
+    },
+    "featureCollaboration": {
+      "title": "Seamless Team Collaboration",
+      "desc": "Human oversight meets AI efficiency. Review, approve, and guide your AI team with intuitive collaboration tools."
+    },
+    "featureScaling": {
+      "title": "Infinite Scalability",
+      "desc": "Scale your marketing efforts without scaling your team. Handle multiple campaigns across unlimited channels simultaneously."
+    },
+    "featureIntegration": {
+      "title": "Universal Integration",
+      "desc": "Connect with your existing marketing stack. Works seamlessly with popular platforms and tools you already use."
+    },
+    "statsTitle": "Proven Results",
+    "stat1": {
+      "number": "10x",
+      "label": "Faster Campaign Creation"
+    },
+    "stat2": {
+      "number": "85%",
+      "label": "Reduction in Manual Work"
+    },
+    "stat3": {
+      "number": "24/7",
+      "label": "Always-On Marketing"
+    },
+    "stat4": {
+      "number": "150%",
+      "label": "Average ROI Increase"
+    },
+    "howItWorksTitle": "How It Works",
+    "step1": {
+      "title": "Define Your Goals",
+      "desc": "Tell us your marketing objectives, target audience, and brand guidelines."
+    },
+    "step2": {
+      "title": "AI Plans Your Strategy",
+      "desc": "Our AI analyzes your market and creates a comprehensive marketing plan."
+    },
+    "step3": {
+      "title": "Agents Execute & Optimize",
+      "desc": "Specialized AI agents create content, launch campaigns, and continuously optimize performance."
+    },
+    "step4": {
+      "title": "Monitor & Scale",
+      "desc": "Track results in real-time and scale successful campaigns automatically."
+    },
+    "testimonialsTitle": "What Our Users Say",
+    "testimonial1": {
+      "quote": "Mercatus transformed our marketing operations. We're now running 5x more campaigns with the same team size.",
+      "author": "Sarah Chen",
+      "role": "Marketing Director",
+      "company": "TechFlow Inc."
+    },
+    "testimonial2": {
+      "quote": "The AI agents understand our brand voice perfectly. It's like having a team of marketing experts working 24/7.",
+      "author": "Michael Rodriguez",
+      "role": "CEO",
+      "company": "Growth Labs"
+    },
+    "testimonial3": {
+      "quote": "ROI increased by 180% within the first quarter. The autonomous optimization is incredible.",
+      "author": "Emma Thompson",
+      "role": "Head of Growth",
+      "company": "InnovateCorp"
+    },
+    "pricingTitle": "Start Your AI Marketing Revolution",
+    "pricingSubtitle": "Choose the perfect plan for your team",
+    "freeTrialNote": "Start with a 14-day free trial. No credit card required.",
+    "finalCtaTitle": "Ready to Transform Your Marketing?",
+    "finalCtaSubtitle": "Join thousands of companies already using AI to scale their marketing efforts.",
+    "finalCta": "Get Started Free",
+    "finalCtaSecondary": "Schedule Demo"
   }
-} 
+}
