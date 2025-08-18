@@ -4,146 +4,155 @@ alwaysApply: true
 
 # 📋 Mercatus Development Workflow & Guidelines
 
-## Table of Contents
-1. [🎯 Core Development Workflow](#core-development-workflow)
-2. [🤖 AI Assistant Behavior Guidelines](#ai-assistant-behavior-guidelines) 
-3. [🔧 Technology Stack](#technology-stack)
-4. [⚡ Performance & Optimization](#performance--optimization)
-5. [🛡️ Security Considerations](#security-considerations)
-6. [🚀 Deployment & Operations](#deployment--operations)
-7. [📚 Documentation Maintenance](#documentation-maintenance)
+## 📖 文档概述
+
+本文档是 Mercatus 项目的核心开发工作流程和指导原则，包含了开发团队和 AI 助手必须遵循的规范和最佳实践。
+
+## 📑 目录
+1. [🎯 核心开发工作流程](#核心开发工作流程)
+2. [🤖 AI 助手行为指导原则](#ai-助手行为指导原则)
+3. [🔧 技术栈配置](#技术栈配置)
+4. [⚡ 性能优化策略](#性能优化策略)
+5. [🛡️ 安全考虑事项](#安全考虑事项)
+6. [🚀 部署与运维](#部署与运维)
+7. [📚 文档维护规范](#文档维护规范)
+8. [🔄 项目文档体系](#项目文档体系)
+9. [🔍 质量保证与版本控制](#质量保证与版本控制)
+10. [🎯 最佳实践总结](#最佳实践总结)
+11. [📞 支持与维护](#支持与维护)
+12. [📚 参考资源](#参考资源)
 
 ---
 
-## 🎯 Core Development Workflow
+## 🎯 核心开发工作流程
 
-### 📖 **CRITICAL: Document-First Development Process**
+### 📖 **核心原则：文档驱动开发流程**
 
-**The PRD.md file is the master product design document and MUST be the starting point for ALL development work.**
+**PRD.md 文件是主要的产品设计文档，必须是所有开发工作的起点。**
 
-#### Mandatory Workflow Sequence:
-1. **📋 Read PRD.md** - **ALWAYS** read this file first to understand product requirements
-2. **📝 Update PRD.md** - If modifying/adding/removing features, update PRD.md FIRST
-3. **📄 Update Planning Documents** - Then update both:
+#### 📋 强制性工作流程序列：
+1. **📋 阅读 PRD.md** - **始终**首先阅读此文件以了解产品需求
+2. **📝 更新 PRD.md** - 如果修改/添加/删除功能，请先更新 PRD.md
+3. **📄 更新规划文档** - 然后更新两个文档：
    - `web/documents/PLANNING.md`
    - `backend/documents/PLANNING.md`
-4. **💻 Implementation** - Write code following project standards
-5. **📋 Update Task Files** - Finally update both:
+4. **💻 实现** - 遵循项目标准编写代码
+5. **📋 更新任务文件** - 最后更新两个文档：
    - `web/documents/TASK.md`
    - `backend/documents/TASK.md`
 
-### 📋 Standard Development Workflow
+### 📋 标准开发工作流程
 
-1. **📖 Read Documentation** - **MANDATORY** - Read PRD.md and both PLANNING.md files
-2. **🔍 Understand Requirements** - Analyze task requirements in context of product goals
-3. **📐 Plan Implementation** - Design technical solutions aligned with architecture
-4. **💻 Code Implementation** - Follow project standards and best practices
-5. **🧪 Test Verification** - Ensure functionality works correctly
-6. **📝 Update Documentation** - Update task files with progress and decisions
-
----
-
-## 🤖 AI Assistant Behavior Guidelines
-
-### 🔧 Development Assistant Rules
-
-- **📖 Mandatory Documentation Reading** - **ALWAYS** start by reading PRD.md, then both PLANNING.md files before any work
-- **🧠 Context Awareness** - Always read relevant documentation first to understand project status
-- **❓ No Assumptions** - Ask questions when uncertain, don't fabricate APIs or libraries
-- **📂 File Path Confirmation** - Verify file paths exist before referencing them
-- **🔄 Incremental Development** - Don't delete or overwrite existing code unless explicitly requested
-- **📋 Autonomous Task Management** - **MUST** autonomously update task files based on work performed:
-  - Mark completed tasks immediately
-  - Add newly discovered tasks or requirements
-  - Document technical decisions and blockers
-  - Track dependencies and optimization opportunities
+1. **📖 阅读文档** - **强制** - 阅读 PRD.md 和两个 PLANNING.md 文件
+2. **🔍 理解需求** - 在产品目标背景下分析任务需求
+3. **📐 计划实现** - 设计与架构一致的技术解决方案
+4. **💻 代码实现** - 遵循项目标准和最佳实践
+5. **🧪 测试验证** - 确保功能正常工作
+6. **📝 更新文档** - 用进度和决策更新任务文件
 
 ---
 
-## 🔧 Technology Stack
+## 🤖 AI 助手行为指导原则
 
-### **Current Project Tech Stack**
-- **Backend**: FastAPI + SQLAlchemy + PostgreSQL + Redis
-- **Frontend**: Next.js + TypeScript + Tailwind CSS + SWR
-- **Authentication**: Google OAuth + JWT
-- **Testing**: pytest + Jest + React Testing Library
+### 🔧 开发助手规则
 
-### **Dependency Management**
-- **Python**: Specify versions in requirements.txt
-- **Node.js**: Lock versions in package.json
-- **Policy**: Evaluate necessity before adding new dependencies
+- **📖 强制性文档阅读** - **始终**在任何工作前先阅读 PRD.md，然后阅读两个 PLANNING.md 文件
+- **🧠 上下文感知** - 始终先阅读相关文档以了解项目状态
+- **❓ 不做假设** - 不确定时询问问题，不要编造 API 或库
+- **📂 文件路径确认** - 在引用文件路径之前验证其存在
+- **🔄 增量开发** - 除非明确要求，否则不要删除或覆盖现有代码
+- **📋 自主任务管理** - **必须**根据执行的工作自主更新任务文件：
+  - 立即标记已完成的任务
+  - 添加新发现的任务或需求
+  - 记录技术决策和阻塞问题
+  - 跟踪依赖关系和优化机会
 
 ---
 
-## ⚡ Performance & Optimization
+## 🔧 技术栈配置
 
-### 🚀 Backend Performance
+### **当前项目技术栈**
+- **后端**: FastAPI + SQLAlchemy + PostgreSQL + Redis
+- **前端**: Next.js + TypeScript + Tailwind CSS + SWR
+- **认证**: Google OAuth + JWT
+- **测试**: pytest + Jest + React Testing Library
 
-#### Database Optimization
-- Proper index usage
-- Query optimization and pagination
-- Connection pool configuration
-- Read-write separation strategy
+### **依赖管理策略**
+- **Python**: 在 requirements.txt 中指定版本
+- **Node.js**: 在 package.json 中锁定版本
+- **策略**: 在添加新依赖之前评估必要性
 
-#### Caching Strategy
-- Redis hot data caching
-- Application layer caching
-- CDN static resource caching
+---
 
-### 🎯 Frontend Performance
+## ⚡ 性能优化策略
 
-#### Code Splitting
+### 🚀 后端性能
+
+#### 数据库优化
+- 正确使用索引
+- 查询优化和分页
+- 连接池配置
+- 读写分离策略
+
+#### 缓存策略
+- Redis 热数据缓存
+- 应用层缓存
+- CDN 静态资源缓存
+
+### 🎯 前端性能
+
+#### 代码分割
 ```typescript
-// Route-level code splitting
+// 路由级代码分割
 const TasksPage = dynamic(() => import('@/app/tasks/page'), {
   loading: () => <Loading />,
 });
 
-// Component-level lazy loading
+// 组件级懒加载
 const HeavyChart = lazy(() => import('@/components/HeavyChart'));
 ```
 
-#### Resource Optimization
-- Image lazy loading and compression
-- Font subsetting
-- Bundle analysis and optimization
-- Service Worker caching
+#### 资源优化
+- 图片懒加载和压缩
+- 字体子集化
+- 包分析和优化
+- Service Worker 缓存
 
 ---
 
-## 🛡️ Security Considerations
+## 🛡️ 安全考虑事项
 
-### 🔐 Data Security
+### 🔐 数据安全
 
-#### Backend Security
-- JWT token expiration and refresh
-- API rate limiting
-- Input validation and XSS protection
-- SQL injection protection
+#### 后端安全
+- JWT 令牌过期和刷新
+- API 速率限制
+- 输入验证和 XSS 防护
+- SQL 注入防护
 
-#### Frontend Security
-- XSS protection
-- CSRF protection
-- No sensitive information stored on client
-- Secure third-party dependencies
+#### 前端安全
+- XSS 防护
+- CSRF 防护
+- 客户端不存储敏感信息
+- 安全的第三方依赖
 
-### 🏢 Multi-tenant Isolation
+### 🏢 多租户隔离
 
-#### Data Isolation
-- Team-level data isolation
-- API permission verification
-- Database row-level security
-- Audit log recording
+#### 数据隔离
+- 团队级数据隔离
+- API 权限验证
+- 数据库行级安全
+- 审计日志记录
 
 ---
 
-## 🚀 Deployment & Operations
+## 🚀 部署与运维
 
-### 🐳 Containerized Deployment
+### 🐳 容器化部署
 
-#### Docker Configuration
+#### Docker 配置
 ```dockerfile
-# Backend Dockerfile
+# 后端 Dockerfile
 FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
@@ -153,7 +162,7 @@ CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ```dockerfile
-# Frontend Dockerfile
+# 前端 Dockerfile
 FROM node:18-alpine
 WORKDIR /app
 COPY package*.json ./
@@ -163,9 +172,9 @@ RUN npm run build
 CMD ["npm", "start"]
 ```
 
-### 🔍 Monitoring & Logging
+### 🔍 监控与日志
 
-#### Structured Logging
+#### 结构化日志
 ```python
 import structlog
 
@@ -180,24 +189,188 @@ logger.info(
 )
 ```
 
-#### Health Checks
-- `/health` - Service health status
-- `/health/db` - Database connection status
-- `/health/redis` - Redis connection status
+#### 健康检查
+- `/health` - 服务健康状态
+- `/health/db` - 数据库连接状态
+- `/health/redis` - Redis 连接状态
 
 ---
 
-## 📚 Documentation Maintenance
+## 📚 文档维护规范
 
-### 📝 Update Triggers
+### 📝 更新触发器
 
-#### README.md Updates
-- New feature additions
-- Dependency changes
-- Deployment step modifications
-- Major API interface changes
+#### README.md 更新
+- 新功能添加
+- 依赖变更
+- 部署步骤修改
+- 主要 API 接口变更
 
-#### Architecture Documentation Sync
-- **PLANNING.md** - Update when architecture design changes
-- **API Documentation** - Sync openapi.json when interface changes
-- **Deployment Documentation** - Update when environment configuration changes
+#### 架构文档同步策略
+- **PLANNING.md** - 架构设计变更时更新
+- **API 文档** - 接口变更时同步 openapi.json
+- **部署文档** - 环境配置变更时更新
+
+---
+
+## 🔄 项目文档体系
+
+### 📋 核心文档结构
+
+#### 1. **PRD.md** - 产品需求文档 (Product Requirements Document)
+- **作用**: 项目的主设计文档，包含产品功能、业务逻辑和用户需求
+- **更新时机**: 任何功能变更前必须先更新此文档
+- **重要性**: 🔴 极高 - 所有开发工作的起点
+
+#### 2. **PLANNING.md** - 技术架构设计文档
+- **位置**: 
+  - `web/documents/PLANNING.md` - 前端架构设计
+  - `backend/documents/PLANNING.md` - 后端架构设计
+- **作用**: 详细的技术实现方案、架构设计和开发计划
+- **更新时机**: PRD.md 更新后，实现代码前
+
+#### 3. **README.md** - 项目介绍文档
+- **作用**: 面向用户的项目介绍，包含部署命令、使用说明、项目概述
+- **更新时机**: 代码更新完成后，根据实际需求更新
+- **内容**: 项目简介、安装部署、快速开始、API 文档链接
+
+#### 4. **TASK.md** - 任务跟踪文档
+- **位置**: 
+  - `web/documents/TASK.md` - 前端任务状态
+  - `backend/documents/TASK.md` - 后端任务状态
+- **作用**: 记录当前开发进度、已完成任务、待办事项
+- **更新时机**: 任务状态变更时实时更新
+
+### 🔄 文档更新流程
+
+```mermaid
+graph TD
+    A[PRD.md 产品需求] --> B[PLANNING.md 技术设计]
+    B --> C[代码实现]
+    C --> D[TASK.md 任务更新]
+    D --> E[README.md 文档更新]
+    
+    F[功能变更需求] --> A
+    G[架构调整] --> B
+    H[任务完成] --> D
+```
+
+### 📝 文档维护责任
+
+- **开发前**: 确保 PRD.md 和 PLANNING.md 是最新状态
+- **开发中**: 实时更新 TASK.md 记录进展和问题
+- **开发后**: 根据实际变更更新 README.md
+- **AI 助手**: 自动维护任务状态，协助文档同步
+
+---
+
+## 🔍 质量保证与版本控制
+
+### 📋 代码审查流程
+
+#### 提交前检查清单
+- [ ] 已阅读并更新相关文档（PRD.md → PLANNING.md → TASK.md）
+- [ ] 代码符合项目编码规范
+- [ ] 已添加必要的测试用例
+- [ ] 已验证功能正常工作
+- [ ] 已更新 API 文档（如有接口变更）
+
+#### Git 工作流程
+```bash
+# 1. 功能开发分支
+git checkout -b feature/功能名称
+
+# 2. 提交格式规范
+git commit -m "feat: 添加用户认证功能"
+git commit -m "fix: 修复任务创建 Bug"
+git commit -m "docs: 更新 API 文档"
+
+# 3. 合并前确认
+git rebase main
+git push origin feature/功能名称
+```
+
+### 🧪 测试策略
+
+#### 后端测试
+- **单元测试**: pytest 覆盖核心业务逻辑
+- **集成测试**: API 接口功能验证
+- **数据库测试**: 数据模型和查询优化
+
+#### 前端测试
+- **组件测试**: React Testing Library
+- **端到端测试**: 用户流程验证
+- **性能测试**: 页面加载和交互响应
+
+---
+
+## 🎯 最佳实践总结
+
+### ✅ 开发规范检查清单
+
+#### 📖 文档优先
+- [ ] 新功能前先更新 PRD.md
+- [ ] 技术方案在 PLANNING.md 中有详细设计
+- [ ] 任务状态在 TASK.md 中及时同步
+
+#### 💻 代码质量
+- [ ] 代码结构清晰，命名规范
+- [ ] 关键逻辑有注释说明
+- [ ] 错误处理完善
+- [ ] 性能考虑充分
+
+#### 🔒 安全标准
+- [ ] 输入验证和 XSS 防护
+- [ ] API 权限验证
+- [ ] 敏感数据保护
+- [ ] 依赖包安全检查
+
+#### 🚀 部署就绪
+- [ ] Docker 配置正确
+- [ ] 环境变量配置完整
+- [ ] 数据库迁移脚本准备
+- [ ] 健康检查接口正常
+
+---
+
+## 📞 支持与维护
+
+### 🔧 常见问题解决
+
+#### 开发环境问题
+- **数据库连接**: 检查 PostgreSQL 和 Redis 服务状态
+- **依赖安装**: 使用 `npm ci` 和 `pip install -r requirements.txt`
+- **端口冲突**: 前端 3000，后端 8000
+
+#### 生产环境监控
+- **日志聚合**: 结构化日志记录
+- **性能监控**: 响应时间和错误率
+- **资源使用**: CPU、内存、磁盘使用情况
+
+### 🆘 紧急响应流程
+
+1. **问题识别**: 通过监控或用户反馈发现问题
+2. **影响评估**: 确定问题严重程度和影响范围
+3. **快速修复**: 优先恢复核心功能
+4. **根本原因**: 分析问题原因并制定长期解决方案
+5. **文档更新**: 更新相关文档防止问题再次发生
+
+---
+
+## 📚 参考资源
+
+### 📖 技术文档
+- **FastAPI**: https://fastapi.tiangolo.com/
+- **Next.js**: https://nextjs.org/docs
+- **PostgreSQL**: https://www.postgresql.org/docs/
+- **Redis**: https://redis.io/documentation
+
+### 🛠️ 开发工具
+- **代码编辑器**: VS Code + 推荐插件
+- **API 测试**: Postman 或 Thunder Client
+- **数据库管理**: pgAdmin 或 DBeaver
+- **版本控制**: Git + GitHub
+
+---
+
+*最后更新: 2024年12月 | 维护者: Mercatus 开发团队*
