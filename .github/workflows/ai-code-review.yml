@@ -1,0 +1,17 @@
+name: AI Code Review
+permissions:
+  contents: read
+  pull-requests: write
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  ai-code-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run AI Code Review
+        uses: ai-fly/ai-code-review-action@main
+        with:
+          openai_model: 'gpt-4o'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
