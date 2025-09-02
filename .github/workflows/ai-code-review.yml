@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run AI Code Review
-        uses: ai-fly/ai-code-review-action/actions/codereview@main
+        uses: ai-fly/ai-code-review-action/codereview@main
         with:
           openai_model: 'gpt-4o'
         env:
