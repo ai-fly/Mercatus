@@ -12,6 +12,6 @@ jobs:
       - name: Run AI Code Review
         uses: ai-fly/ai-code-review-action/codereview@main
         with:
-          openai_model: 'gpt-4o'
+          openai_model: 'gpt-8o'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
