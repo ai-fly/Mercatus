@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   ai-code-review:
-    uses: GiggleAcademy/giggle-common-actions/.github/workflows/codex-review.yml@main
+    uses: ai-fly/ai-code-review-action/.github/workflows/codex-review.yml@main
 
     with:
       model: "z-ai/glm-5.2:free"
