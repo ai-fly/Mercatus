@@ -14,7 +14,7 @@ jobs:
     uses: ai-fly/ai-code-review-action/.github/workflows/codex-review.yml@main
 
     with:
-      model: "openrouter/deepseek/deepseek-v4-pro"
+      model: "deepseek/deepseek-v4-pro-0813"
       responses_api_endpoint: "https://openrouter.ai/api/v1/responses"
 
       effort: high
