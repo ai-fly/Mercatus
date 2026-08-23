@@ -2,33 +2,25 @@ name: AI Code Review
 
 on:
   pull_request:
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - ready_for_review
+    types: [opened, synchronize, reopened]
 
-concurrency:
-  group: codex-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   ai-code-review:
-    if: ${{ github.event.pull_request.draft == false }}
-
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
-
     uses: GiggleAcademy/giggle-common-actions/.github/workflows/codex-review.yml@main
 
     with:
+      model: "z-ai/glm-5.2:free"
+      responses_api_endpoint: "https://openrouter.ai/api/v1/responses"
+
       effort: high
       min_severity: medium
+
       rules_path: AGENTS.md
       rules_required: false
 
     secrets:
-      openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-
+      openai_api_key: ${{ secrets.OPENROUTER_API_KEY }}
