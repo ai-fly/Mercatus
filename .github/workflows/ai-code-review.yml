@@ -33,7 +33,7 @@ jobs:
       # Codex 使用；选择 OCR 时会忽略
       responses_api_endpoint: "https://openrouter.ai/api/v1/responses"
       effort: high
-      min_severity: medium
+      min_severity: low
 
       # OpenCodeReview 使用；选择 Codex 时会忽略
       ocr_llm_url: "https://openrouter.ai/api/v1/chat/completions"
