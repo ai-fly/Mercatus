@@ -2,24 +2,46 @@ name: AI Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
 
 permissions:
   contents: read
-  pull-requests: write
   issues: write
+  pull-requests: write
+
+concurrency:
+  group: ai-code-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   ai-code-review:
+    if: ${{ github.event.pull_request.draft == false }}
+
     uses: ai-fly/ai-code-review-action/.github/workflows/codex-review.yml@main
 
     with:
-      model: "deepseek/deepseek-v4-pro-0813"
-      responses_api_endpoint: "https://openrouter.ai/api/v1/responses"
+      # 可选：codex 或 open-code-review
+      engine: open-code-review
 
+      # OpenRouter 模型 ID，不要添加 openrouter/ 前缀
+      model: "deepseek/deepseek-v4-pro"
+
+      # Codex 使用；选择 OCR 时会忽略
+      responses_api_endpoint: "https://openrouter.ai/api/v1/responses"
       effort: high
       min_severity: medium
 
+      # OpenCodeReview 使用；选择 Codex 时会忽略
+      ocr_llm_url: "https://openrouter.ai/api/v1/chat/completions"
+      ocr_language: Chinese
+      ocr_version: latest
+      ocr_concurrency: "4"
+
+      # 两个引擎共用同一个项目规则文件
       rules_path: AGENTS.md
       rules_required: false
 
