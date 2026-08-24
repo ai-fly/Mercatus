@@ -25,7 +25,7 @@ jobs:
 
     with:
       # 可选：codex 或 open-code-review
-      engine: open-code-review
+      engine: codex
 
       # OpenRouter 模型 ID，不要添加 openrouter/ 前缀
       model: "deepseek/deepseek-v4-flash-0731"
