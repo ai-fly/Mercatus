@@ -7,10 +7,6 @@ def setup_logger(name="mercatus", log_level=logging.DEBUG):
     """
     Set up and configure application logging
     
-    Args:
-        name: Logger name
-        log_level: Log level
-    
     Returns:
         Configured logger
     """

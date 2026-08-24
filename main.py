@@ -7,6 +7,7 @@ from app.manager import Manager
 from app.utils.logging import setup_logger
 import sys
 
+# log
 # Set up main logger
 logger = setup_logger(name="main")
 
